@@ -611,7 +611,7 @@ func (s *Server) handleKeyPools(w http.ResponseWriter, r *http.Request) {
 				req.Platform = "Steam"
 			}
 			if req.CoverImageURL == "" {
-				req.CoverImageURL = "/inspo/sunset-studio.jpg"
+				req.CoverImageURL = "/brand/filler.png"
 			}
 			err = tx.QueryRow(`
 				INSERT INTO trigamedev.key_pools (title, platform, store_url, cover_image_url, description, donated_by_name, created_by)
@@ -640,7 +640,7 @@ func (s *Server) handleKeyPools(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		s.notifyDiscordWebhook(fmt.Sprintf("🎁 **%s** just donated **%d key(s)** for **%s** (%s) in the TriGameDev Key Vault!", u.DisplayName, len(cleanKeys), req.Title, req.Platform))
+		s.notifyDiscordWebhook(fmt.Sprintf("[KEY VAULT] **%s** donated **%d key(s)** for **%s** (%s).", u.DisplayName, len(cleanKeys), req.Title, req.Platform))
 
 		writeJSON(w, http.StatusCreated, map[string]any{
 			"status":     "donated",
@@ -833,7 +833,7 @@ func (s *Server) handleEbooks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if req.CoverImageURL == "" {
-			req.CoverImageURL = "/inspo/rooftop-twilight.jpg"
+			req.CoverImageURL = "/brand/filler.png"
 		}
 		if req.FileFormat == "" {
 			req.FileFormat = "PDF"
@@ -856,7 +856,7 @@ func (s *Server) handleEbooks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		s.notifyDiscordWebhook(fmt.Sprintf("📚 **%s** uploaded a new ebook to the TriGameDev Library: **%s** by *%s* (%s)", u.DisplayName, req.Title, req.Author, req.FileFormat))
+		s.notifyDiscordWebhook(fmt.Sprintf("[EBOOK LIBRARY] **%s** uploaded a new ebook: **%s** by *%s* (%s).", u.DisplayName, req.Title, req.Author, req.FileFormat))
 		writeJSON(w, http.StatusCreated, map[string]any{"status": "created", "id": id})
 	}
 }
@@ -984,8 +984,8 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Title (or a valid itch.io URL) is required"})
 			return
 		}
-		if req.ImageURL == "" {
-			req.ImageURL = "/inspo/sunset-studio.jpg"
+		if req.Section != "news" && req.ImageURL == "" {
+			req.ImageURL = "/brand/filler.png"
 		}
 
 		var err error
@@ -1035,7 +1035,7 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
-		s.notifyDiscordWebhook(fmt.Sprintf("⚡ **%s (OG)** published a new **%s** entry on TriGameDev.org: **%s**", u.DisplayName, req.Section, req.Title))
+		s.notifyDiscordWebhook(fmt.Sprintf("[CMS] **%s (OG)** published a new **%s** entry on TriGameDev.org: **%s**", u.DisplayName, req.Section, req.Title))
 		writeJSON(w, http.StatusCreated, map[string]string{"status": "published"})
 		return
 	}

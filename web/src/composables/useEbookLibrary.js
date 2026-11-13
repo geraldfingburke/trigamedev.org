@@ -17,7 +17,7 @@ export function useEbookLibrary() {
     description: '',
     file_format: 'PDF',
     file_size_label: '',
-    cover_image_url: '/inspo/rooftop-twilight.jpg'
+    cover_image_url: '/brand/filler.png'
   })
 
   async function submitEbookUpload() {
@@ -38,7 +38,7 @@ export function useEbookLibrary() {
         description: '',
         file_format: 'PDF',
         file_size_label: '',
-        cover_image_url: '/inspo/rooftop-twilight.jpg'
+        cover_image_url: '/brand/filler.png'
       }
       showToast('Ebook added to the direct-download library!')
       await loadAllData()

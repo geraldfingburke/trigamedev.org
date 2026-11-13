@@ -16,7 +16,7 @@ export function useKeyVault() {
     title: '',
     platform: 'Steam',
     store_url: '',
-    cover_image_url: '/inspo/sunset-studio.jpg',
+    cover_image_url: '/brand/filler.png',
     description: '',
     raw_keys: ''
   })
@@ -69,7 +69,7 @@ export function useKeyVault() {
         title: '',
         platform: 'Steam',
         store_url: '',
-        cover_image_url: '/inspo/sunset-studio.jpg',
+        cover_image_url: '/brand/filler.png',
         description: '',
         raw_keys: ''
       }

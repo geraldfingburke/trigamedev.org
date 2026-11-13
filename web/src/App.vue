@@ -52,19 +52,19 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#12121b] text-[#f4f4f9] flex flex-col p-2 sm:p-4 lg:p-6">
+  <div class="min-h-screen bg-[#09090b] text-[#f4f4f5] flex flex-col">
     <!-- Toast Notification -->
     <ToastNotice />
 
-    <!-- Main Dashboard App Frame -->
+    <!-- Main Brutalist Grid Frame (Sharp edges, 1px structural borders, no gradients) -->
     <div
-      class="flex-1 w-full max-w-[1640px] mx-auto bg-[#1b1b26] rounded-[28px] border border-white/[0.07] shadow-[0_30px_90px_rgba(0,0,0,0.65)] overflow-hidden grid grid-cols-1 lg:grid-cols-[76px_1fr_340px]"
+      class="flex-1 w-full max-w-[1680px] mx-auto bg-[#0f0f12] border-x border-zinc-800 grid grid-cols-1 lg:grid-cols-[72px_1fr_340px]"
     >
       <!-- 1. Left Navigation Rail -->
       <NavRail />
 
       <!-- 2. Center Main Stage -->
-      <main class="p-5 sm:p-8 flex flex-col gap-7 overflow-y-auto">
+      <main class="p-6 sm:p-8 flex flex-col gap-8 overflow-y-auto">
         <TopHeader />
         <component :is="currentViewComponent" />
       </main>

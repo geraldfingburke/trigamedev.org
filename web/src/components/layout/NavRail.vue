@@ -9,8 +9,7 @@ import {
   Image as ImageIcon,
   KeyRound,
   BookOpen,
-  ShieldAlert,
-  Gamepad2
+  ShieldAlert
 } from 'lucide-vue-next'
 import { useTriGameDevStore } from '../../composables/useTriGameDevStore'
 
@@ -30,39 +29,35 @@ const navItems = computed(() => [
 
 <template>
   <aside
-    class="bg-[#232234] border-b lg:border-b-0 lg:border-r border-white/[0.06] flex lg:flex-col items-center justify-between px-4 py-3 lg:py-6 gap-2"
+    class="bg-[#09090b] border-b lg:border-b-0 lg:border-r border-zinc-800 flex lg:flex-col items-center justify-between px-3 py-3 lg:py-6 gap-2"
   >
-    <!-- Brand Emblem -->
+    <!-- Official TriGameDev Brand Seal -->
     <button
       @click="activeSection = 'explore'"
-      class="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#6c5ce7] via-[#8b5cf6] to-[#ff4d8d] flex items-center justify-center shadow-lg shadow-[#6c5ce7]/30 hover:scale-105 transition cursor-pointer"
+      class="w-12 h-12 border border-zinc-700 bg-black flex items-center justify-center hover:border-white transition cursor-pointer p-1"
       title="TriGameDev.org Home"
     >
-      <Gamepad2 class="w-6 h-6 text-white" />
+      <img src="/brand/circle-logo-small.png" alt="TriGameDev Seal" class="w-full h-full object-contain" />
     </button>
 
     <!-- Primary Icon Rail -->
-    <nav class="flex lg:flex-col items-center gap-2 sm:gap-3 overflow-x-auto">
+    <nav class="flex lg:flex-col items-center gap-1.5 overflow-x-auto">
       <button
         v-for="item in navItems"
         :key="item.id"
         @click="activeSection = item.id"
-        class="relative group w-11 h-11 rounded-2xl flex items-center justify-center transition-all cursor-pointer"
+        class="relative group w-11 h-11 flex items-center justify-center transition-colors cursor-pointer border"
         :class="
           activeSection === item.id
-            ? 'bg-[#6c5ce7]/20 text-white shadow-inner border border-[#8b5cf6]/40'
-            : 'text-[#8e8ea9] hover:text-white hover:bg-white/[0.05]'
+            ? 'bg-white text-black border-white'
+            : 'bg-transparent text-zinc-400 border-transparent hover:text-white hover:border-zinc-700'
         "
         :title="item.label"
       >
-        <span
-          v-if="activeSection === item.id"
-          class="hidden lg:block absolute -left-3 w-1.5 h-6 rounded-r-full bg-gradient-to-b from-[#8b5cf6] to-[#ff4d8d]"
-        ></span>
         <component :is="item.icon" class="w-5 h-5" />
         <span
           v-if="item.badge"
-          class="absolute -top-1 -right-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-[#ff4d8d] text-white"
+          class="absolute -top-1.5 -right-1.5 px-1 text-[10px] font-mono font-bold bg-[#dc2626] text-white border border-black"
         >
           {{ item.badge }}
         </span>
@@ -74,11 +69,11 @@ const navItems = computed(() => [
       <button
         v-if="currentUser?.is_og_admin"
         @click="activeSection = 'cms'"
-        class="relative w-11 h-11 rounded-2xl flex items-center justify-center transition cursor-pointer"
+        class="relative w-11 h-11 flex items-center justify-center transition cursor-pointer border"
         :class="
           activeSection === 'cms'
-            ? 'bg-[#ff9f43]/25 text-[#ff9f43] border border-[#ff9f43]/50'
-            : 'text-[#8e8ea9] hover:text-[#ff9f43] hover:bg-white/[0.05]'
+            ? 'bg-[#dc2626] text-white border-[#dc2626]'
+            : 'text-zinc-400 border-zinc-800 hover:text-white hover:border-white'
         "
         title="OG Role Admin CMS"
       >

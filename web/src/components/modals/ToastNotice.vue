@@ -1,5 +1,5 @@
 <script setup>
-import { Sparkles } from 'lucide-vue-next'
+import { Terminal } from 'lucide-vue-next'
 import { useTriGameDevStore } from '../../composables/useTriGameDevStore'
 
 const { toastMessage } = useTriGameDevStore()
@@ -9,9 +9,9 @@ const { toastMessage } = useTriGameDevStore()
   <transition name="fade">
     <div
       v-if="toastMessage"
-      class="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-2xl bg-[#252338]/95 border border-[#ff4d8d]/50 text-sm font-medium shadow-2xl shadow-[#ff4d8d]/20 backdrop-blur-xl"
+      class="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 bg-[#09090b] border border-white text-xs font-mono uppercase tracking-wider text-white"
     >
-      <Sparkles class="w-4 h-4 text-[#ff4d8d] shrink-0" />
+      <Terminal class="w-4 h-4 text-[#ef4444] shrink-0" />
       <span>{{ toastMessage }}</span>
     </div>
   </transition>

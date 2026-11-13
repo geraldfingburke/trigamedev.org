@@ -9,13 +9,13 @@ const { downloadEbook } = useEbookLibrary()
 
 <template>
   <div class="flex flex-col gap-6">
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800 pb-4">
       <div>
-        <h1 class="text-2xl font-extrabold text-white flex items-center gap-2.5">
-          <BookOpen class="w-6 h-6 text-[#ff9f43]" />
+        <h1 class="text-2xl font-extrabold text-white uppercase flex items-center gap-2.5">
+          <BookOpen class="w-6 h-6 text-[#ef4444]" />
           <span>TriGameDev Ebook Library</span>
         </h1>
-        <p class="text-xs sm:text-sm text-[#9e9eb8] mt-1">
+        <p class="text-xs sm:text-sm text-zinc-400 mt-1">
           Direct-download game design books and reference manuals for TriGameDev members.
         </p>
       </div>
@@ -23,7 +23,7 @@ const { downloadEbook } = useEbookLibrary()
       <button
         v-if="currentUser"
         @click="showUploadEbookModal = true"
-        class="px-4 py-2 rounded-xl bg-gradient-to-r from-[#ff9f43] to-[#ff4d8d] text-[#14141d] font-bold text-xs flex items-center gap-1.5 shadow-lg cursor-pointer w-fit"
+        class="px-4 py-2 bg-white hover:bg-zinc-200 text-black font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer w-fit transition"
       >
         <Plus class="w-4 h-4" />
         <span>Contribute Ebook</span>
@@ -32,7 +32,7 @@ const { downloadEbook } = useEbookLibrary()
 
     <div
       v-if="filteredEbooks.length === 0"
-      class="p-10 rounded-3xl bg-[#242336] border border-white/[0.06] text-center text-sm text-[#8e8ea9]"
+      class="p-10 bg-[#121215] border border-zinc-800 text-center text-xs font-mono uppercase text-zinc-500"
     >
       No ebooks have been uploaded yet.
     </div>
@@ -41,33 +41,33 @@ const { downloadEbook } = useEbookLibrary()
       <div
         v-for="book in filteredEbooks"
         :key="book.id"
-        class="bg-[#242336] rounded-3xl p-4 border border-white/[0.07] flex flex-col sm:flex-row gap-4 justify-between"
+        class="bg-[#121215] p-4 border border-zinc-800 flex flex-col sm:flex-row gap-4 justify-between"
       >
         <img
-          :src="book.cover_image_url || '/inspo/rooftop-twilight.jpg'"
+          :src="book.cover_image_url || '/brand/filler.png'"
           :alt="book.title"
-          class="w-full sm:w-32 h-44 rounded-2xl object-cover shrink-0 border border-white/10"
+          class="w-full sm:w-32 h-44 object-cover bg-black shrink-0 border border-zinc-800"
         />
         <div class="flex-1 flex flex-col justify-between gap-3">
           <div>
             <div class="flex items-center justify-between gap-2">
-              <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#ff9f43]/20 text-[#ff9f43]">
+              <span class="px-2 py-0.5 text-[11px] font-mono uppercase bg-zinc-900 border border-zinc-700 text-[#ef4444]">
                 {{ book.category }}
               </span>
-              <span class="text-xs font-mono text-[#8e8ea9]">
-                {{ book.file_format }} {{ book.file_size_label ? `• ${book.file_size_label}` : '' }}
+              <span class="text-xs font-mono text-zinc-400">
+                {{ book.file_format }} {{ book.file_size_label ? `// ${book.file_size_label}` : '' }}
               </span>
             </div>
-            <h3 class="font-bold text-base text-white mt-1.5">{{ book.title }}</h3>
-            <p class="text-xs text-[#a78bfa] font-medium">by {{ book.author }}</p>
-            <p class="text-xs text-[#9e9eb8] mt-1.5 line-clamp-2">{{ book.description }}</p>
+            <h3 class="font-bold text-base text-white uppercase mt-1.5">{{ book.title }}</h3>
+            <p class="text-xs font-mono text-zinc-400">BY {{ book.author }}</p>
+            <p class="text-xs text-zinc-400 mt-1.5 line-clamp-2">{{ book.description }}</p>
           </div>
 
-          <div class="flex items-center justify-between pt-2 border-t border-white/[0.06]">
-            <span class="text-[11px] text-[#7c7c9a]">{{ book.download_count }} downloads</span>
+          <div class="flex items-center justify-between pt-2 border-t border-zinc-800">
+            <span class="text-[11px] font-mono text-zinc-500">{{ book.download_count }} DOWNLOADS</span>
             <button
               @click="downloadEbook(book)"
-              class="px-4 py-2 rounded-xl bg-gradient-to-r from-[#6c5ce7] to-[#8b5cf6] hover:opacity-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-[#6c5ce7]/25 cursor-pointer"
+              class="px-4 py-2 bg-white hover:bg-zinc-200 text-black text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition"
             >
               <Download class="w-3.5 h-3.5" />
               <span>Direct Download</span>
