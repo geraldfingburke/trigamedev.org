@@ -100,8 +100,9 @@ func main() {
 	mux.HandleFunc("/tgd/library/ebooks", s.handleEbooks)
 	mux.HandleFunc("/tgd/library/download", s.handleEbookDownload)
 
-	// OG Admin CMS & Discord Sync
+	// OG Admin CMS, Itch.io One-Shot Scraper & Discord Sync
 	mux.HandleFunc("/tgd/cms/item", s.handleCMSItem)
+	mux.HandleFunc("/tgd/cms/itch-scrape", s.handleItchScrape)
 	mux.HandleFunc("/tgd/cms/discord-sync", s.handleDiscordSync)
 
 	log.Printf("Starting Go API server on :%s", port)
@@ -923,16 +924,64 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodPost {
 		var req struct {
-			Section     string `json:"section"` // news, events, jams, showcase
-			Title       string `json:"title"`
-			Subtitle    string `json:"subtitle"`
-			Description string `json:"description"`
-			Tag         string `json:"tag"`
-			URL         string `json:"url"`
-			ImageURL    string `json:"image_url"`
+			Section           string `json:"section"` // news, events, jams, showcase
+			Title             string `json:"title"`
+			Subtitle          string `json:"subtitle"`
+			Description       string `json:"description"`
+			Tag               string `json:"tag"`
+			URL               string `json:"url"`
+			SecondaryURL      string `json:"secondary_url"`
+			ImageURL          string `json:"image_url"`
+			StartDate         string `json:"start_date"`
+			EndDate           string `json:"end_date"`
+			Status            string `json:"status"`
+			ParticipantsCount int    `json:"participants_count"`
+			SubmissionsCount  int    `json:"submissions_count"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Title == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Title and section required"})
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid JSON payload"})
+			return
+		}
+
+		// Auto-scrape from itch.io if a Jam or Showcase item is submitted with an itch.io URL and missing fields!
+		if (req.Section == "jams" || req.Section == "showcase") && strings.Contains(strings.ToLower(req.URL), "itch.io") && req.Title == "" {
+			if scraped, err := scrapeItchURL(req.URL); err == nil {
+				req.Title = scraped.Title
+				if req.Subtitle == "" {
+					req.Subtitle = scraped.Subtitle
+				}
+				if req.Description == "" {
+					req.Description = scraped.Description
+				}
+				if req.Tag == "" {
+					req.Tag = scraped.Tag
+				}
+				if req.ImageURL == "" || req.ImageURL == "/inspo/sunset-studio.jpg" {
+					req.ImageURL = scraped.ImageURL
+				}
+				if req.SecondaryURL == "" {
+					req.SecondaryURL = scraped.SecondaryURL
+				}
+				if req.StartDate == "" {
+					req.StartDate = scraped.StartDate
+				}
+				if req.EndDate == "" {
+					req.EndDate = scraped.EndDate
+				}
+				if req.Status == "" {
+					req.Status = scraped.Status
+				}
+				if req.ParticipantsCount == 0 {
+					req.ParticipantsCount = scraped.ParticipantsCount
+				}
+				if req.SubmissionsCount == 0 {
+					req.SubmissionsCount = scraped.SubmissionsCount
+				}
+			}
+		}
+
+		if req.Title == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Title (or a valid itch.io URL) is required"})
 			return
 		}
 		if req.ImageURL == "" {
@@ -952,15 +1001,31 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 				VALUES ($1, $2, $3, NOW() + INTERVAL '3 days', $4, $5)
 			`, req.Title, req.Description, req.Subtitle, req.ImageURL, req.Tag)
 		case "jams":
+			st := time.Now()
+			et := time.Now().Add(72 * time.Hour)
+			if parsedSt, pErr := time.Parse(time.RFC3339, req.StartDate); pErr == nil {
+				st = parsedSt
+			}
+			if parsedEt, pErr := time.Parse(time.RFC3339, req.EndDate); pErr == nil {
+				et = parsedEt
+			}
+			status := req.Status
+			if status == "" {
+				status = "active"
+			}
 			_, err = s.db.Exec(`
-				INSERT INTO trigamedev.game_jams (title, month_label, theme, description, itch_url, cover_image_url, start_date, end_date, status)
-				VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW() + INTERVAL '3 days', 'active')
-			`, req.Title, req.Tag, req.Subtitle, req.Description, req.URL, req.ImageURL)
+				INSERT INTO trigamedev.game_jams (title, month_label, theme, description, itch_url, cover_image_url, start_date, end_date, status, participants_count, submissions_count)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			`, req.Title, req.Tag, req.Subtitle, req.Description, req.URL, req.ImageURL, st, et, status, req.ParticipantsCount, req.SubmissionsCount)
 		case "showcase":
+			srcURL := req.SecondaryURL
+			if srcURL == "" {
+				srcURL = req.URL
+			}
 			_, err = s.db.Exec(`
-				INSERT INTO trigamedev.showcase (title, developer_name, description, thumbnail_url, play_url, engine, featured)
-				VALUES ($1, $2, $3, $4, $5, $6, TRUE)
-			`, req.Title, req.Subtitle, req.Description, req.ImageURL, req.URL, req.Tag)
+				INSERT INTO trigamedev.showcase (title, developer_name, description, thumbnail_url, play_url, source_url, engine, featured)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
+			`, req.Title, req.Subtitle, req.Description, req.ImageURL, req.URL, srcURL, req.Tag)
 		default:
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Unknown CMS section"})
 			return

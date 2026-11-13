@@ -79,14 +79,50 @@ const ebookForm = ref({
 })
 
 const cmsForm = ref({
-  section: 'news',
+  section: 'jams',
   title: '',
   subtitle: '',
   description: '',
-  tag: 'Announcement',
+  tag: '',
   url: '',
-  image_url: '/inspo/sunset-studio.jpg'
+  secondary_url: '',
+  image_url: '',
+  start_date: '',
+  end_date: '',
+  status: 'active',
+  participants_count: 0,
+  submissions_count: 0
 })
+const scrapingItch = ref(false)
+
+async function autofillFromItch() {
+  if (!cmsForm.value.url || !cmsForm.value.url.includes('itch.io')) {
+    showToast('Please paste an itch.io Jam or Game URL first.')
+    return
+  }
+  scrapingItch.value = true
+  try {
+    const data = await apiFetch(`/tgd/cms/itch-scrape?url=${encodeURIComponent(cmsForm.value.url)}`)
+    cmsForm.value.section = data.kind === 'jam' ? 'jams' : 'showcase'
+    cmsForm.value.title = data.title || ''
+    cmsForm.value.subtitle = data.subtitle || ''
+    cmsForm.value.description = data.description || ''
+    cmsForm.value.tag = data.tag || ''
+    cmsForm.value.url = data.url || cmsForm.value.url
+    cmsForm.value.secondary_url = data.secondary_url || ''
+    cmsForm.value.image_url = data.image_url || ''
+    cmsForm.value.start_date = data.start_date || ''
+    cmsForm.value.end_date = data.end_date || ''
+    cmsForm.value.status = data.status || 'active'
+    cmsForm.value.participants_count = data.participants_count || 0
+    cmsForm.value.submissions_count = data.submissions_count || 0
+    showToast(`Scraped ${data.kind.toUpperCase()}: "${data.title}" from itch.io!`)
+  } catch (e) {
+    showToast(`Scraper error: ${e.message}`)
+  } finally {
+    scrapingItch.value = false
+  }
+}
 
 function showToast(msg) {
   toastMessage.value = msg
@@ -244,8 +280,8 @@ function downloadEbook(book) {
 }
 
 async function publishCMSItem() {
-  if (!cmsForm.value.title) {
-    showToast('Please enter a title.')
+  if (!cmsForm.value.title && !cmsForm.value.url.includes('itch.io')) {
+    showToast('Please enter an itch.io URL or a title.')
     return
   }
   try {
@@ -257,6 +293,9 @@ async function publishCMSItem() {
     cmsForm.value.title = ''
     cmsForm.value.subtitle = ''
     cmsForm.value.description = ''
+    cmsForm.value.url = ''
+    cmsForm.value.secondary_url = ''
+    cmsForm.value.image_url = ''
     await loadAllData()
   } catch (e) {
     showToast(e.message)
@@ -1219,6 +1258,33 @@ onMounted(() => {
             <div class="bg-[#242336] rounded-3xl p-6 border border-white/[0.07] flex flex-col gap-4">
               <h2 class="text-lg font-bold text-white">Publish New Community Entry</h2>
 
+              <!-- One-Click Itch.io Scraper Box -->
+              <div class="p-4 rounded-2xl bg-[#181726] border border-[#8b5cf6]/40 flex flex-col gap-2.5">
+                <div class="flex items-center justify-between">
+                  <label class="text-xs font-bold text-[#a78bfa] flex items-center gap-1.5">
+                    <Sparkles class="w-3.5 h-3.5 text-[#ff4d8d]" />
+                    <span>One-Click Itch.io Jam / Game Importer</span>
+                  </label>
+                  <span class="text-[11px] text-[#8e8ea9]">Paste a link & publish directly or auto-fill</span>
+                </div>
+                <div class="flex flex-col sm:flex-row gap-2">
+                  <input
+                    v-model="cmsForm.url"
+                    type="url"
+                    placeholder="https://itch.io/jam/... or https://creator.itch.io/game"
+                    class="flex-1 px-3.5 py-2.5 rounded-xl bg-[#12121b] border border-white/10 text-sm text-white placeholder-[#6c6c8a]"
+                  />
+                  <button
+                    type="button"
+                    @click="autofillFromItch"
+                    :disabled="scrapingItch"
+                    class="px-4 py-2.5 rounded-xl bg-[#6c5ce7] hover:bg-[#5a4ad1] disabled:opacity-50 text-white text-xs font-bold whitespace-nowrap cursor-pointer transition"
+                  >
+                    {{ scrapingItch ? 'Scraping Itch.io...' : 'Auto-Fill from Itch.io' }}
+                  </button>
+                </div>
+              </div>
+
               <div class="grid grid-cols-2 gap-3">
                 <div>
                   <label class="text-xs text-[#8e8ea9]">Target Section</label>
@@ -1226,10 +1292,10 @@ onMounted(() => {
                     v-model="cmsForm.section"
                     class="w-full mt-1 px-3 py-2.5 rounded-xl bg-[#181726] border border-white/10 text-sm text-white"
                   >
-                    <option value="news">News / Announcement</option>
-                    <option value="events">Event / Meetup</option>
                     <option value="jams">Monthly Game Jam</option>
                     <option value="showcase">Game Showcase</option>
+                    <option value="news">News / Announcement</option>
+                    <option value="events">Event / Meetup</option>
                   </select>
                 </div>
                 <div>
@@ -1237,16 +1303,18 @@ onMounted(() => {
                   <input
                     v-model="cmsForm.tag"
                     type="text"
+                    placeholder="Auto-filled for Itch links"
                     class="w-full mt-1 px-3 py-2 rounded-xl bg-[#181726] border border-white/10 text-sm text-white"
                   />
                 </div>
               </div>
 
               <div>
-                <label class="text-xs text-[#8e8ea9]">Title</label>
+                <label class="text-xs text-[#8e8ea9]">Title (Optional if Itch.io URL is provided above)</label>
                 <input
                   v-model="cmsForm.title"
                   type="text"
+                  placeholder="Leave blank to auto-scrape on publish, or click Auto-Fill to preview"
                   class="w-full mt-1 px-3.5 py-2.5 rounded-xl bg-[#181726] border border-white/10 text-sm text-white"
                 />
               </div>
@@ -1313,6 +1381,20 @@ onMounted(() => {
                     <span class="text-white font-semibold">{{ item.title }}</span>
                   </div>
                   <button @click="deleteCMSItem('events', item.id)" class="text-[#ff4d8d] hover:underline shrink-0 cursor-pointer">
+                    Delete
+                  </button>
+                </div>
+
+                <div
+                  v-for="item in overview.jams"
+                  :key="'j-' + item.id"
+                  class="p-3 rounded-2xl bg-[#181726] flex items-center justify-between gap-2 text-xs"
+                >
+                  <div class="truncate">
+                    <span class="text-[#ff4d8d] font-bold mr-2">[JAM]</span>
+                    <span class="text-white font-semibold">{{ item.title }}</span>
+                  </div>
+                  <button @click="deleteCMSItem('jams', item.id)" class="text-[#ff4d8d] hover:underline shrink-0 cursor-pointer">
                     Delete
                   </button>
                 </div>
