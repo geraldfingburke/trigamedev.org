@@ -1,0 +1,92 @@
+name: Tag & Deploy to VPS
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Optional version label for manual dispatch'
+        required: false
+        default: 'manual'
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build in CI & Deploy to VPS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build Vue 3 Frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Setup Go 1.23
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: infra/services/api-go/go.sum
+
+      - name: Compile Static Linux Go API Binary
+        working-directory: infra/services/api-go
+        run: |
+          go mod tidy
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o server .
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_key
+          chmod 600 ~/.ssh/vps_key
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync Artifacts & Infrastructure Configs to VPS
+        run: |
+          # Sync compose, Caddy, scripts, Postgres init, and FastAPI service files
+          scp -i ~/.ssh/vps_key infra/docker-compose.yml root@${{ secrets.VPS_HOST }}:/opt/infra/docker-compose.yml
+          scp -i ~/.ssh/vps_key infra/caddy/Caddyfile root@${{ secrets.VPS_HOST }}:/opt/infra/caddy/Caddyfile
+          scp -i ~/.ssh/vps_key infra/caddy/sites/* root@${{ secrets.VPS_HOST }}:/opt/infra/caddy/sites/
+          scp -i ~/.ssh/vps_key infra/postgres/init/*.sql root@${{ secrets.VPS_HOST }}:/opt/infra/postgres/init/
+          scp -i ~/.ssh/vps_key infra/scripts/*.sh root@${{ secrets.VPS_HOST }}:/opt/infra/scripts/
+          scp -i ~/.ssh/vps_key infra/services/api-go/* root@${{ secrets.VPS_HOST }}:/opt/infra/services/api-go/
+
+          # Sync compiled Vue SPA assets to both default and trigamedev.org web roots
+          ssh -i ~/.ssh/vps_key root@${{ secrets.VPS_HOST }} "mkdir -p /opt/infra/sites/trigamedev.org /opt/infra/sites/default"
+          scp -i ~/.ssh/vps_key -r web/dist/* root@${{ secrets.VPS_HOST }}:/opt/infra/sites/trigamedev.org/
+          scp -i ~/.ssh/vps_key -r web/dist/* root@${{ secrets.VPS_HOST }}:/opt/infra/sites/default/
+
+      - name: Restart Services & Verify Health on VPS
+        run: |
+          ssh -i ~/.ssh/vps_key root@${{ secrets.VPS_HOST }} << 'EOF'
+            set -e
+            chmod +x /opt/infra/scripts/*.sh
+            cd /opt/infra
+
+            # Apply any new idempotent schema migrations
+            docker exec -i infra-postgres psql -U postgres -d main < /opt/infra/postgres/init/02-trigamedev.sql
+
+            # Rebuild lightweight runtime container using pre-built binary & reload Caddy
+            docker compose up -d --build api-go
+            docker exec infra-caddy caddy reload --config /etc/caddy/Caddyfile
+
+            sleep 2
+            curl -sf http://127.0.0.1/api/go/health
+            echo ""
+            echo "Deployment complete!"
+          EOF
