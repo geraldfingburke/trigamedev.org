@@ -6,26 +6,21 @@ import {
   Calendar,
   Newspaper,
   Image as ImageIcon,
-  Video,
   KeyRound,
   BookOpen,
   ShieldAlert,
   Search,
   Bell,
   Sparkles,
-  ExternalLink,
   Copy,
   Check,
   Download,
   Plus,
   RefreshCw,
   LogOut,
-  Users,
   Eye,
-  Clock,
   Gamepad2,
   ChevronRight,
-  Trash2,
   Radio,
   Gift,
   Lock
@@ -38,8 +33,7 @@ const searchQuery = ref('')
 const loading = ref(true)
 const toastMessage = ref('')
 
-// User / Auth State (Supports real Discord OAuth + Workshop Role Switcher)
-const demoRole = ref('og') // 'guest' | 'member' | 'og'
+// User / Auth State (Federated Discord OAuth2 Only)
 const currentUser = ref(null)
 const discordConfigured = ref(false)
 
@@ -51,14 +45,14 @@ const overview = ref({
   showcase: [],
   gallery: [],
   videos: [],
-  stats: { available_keys: 8, total_ebooks: 4, discord_online: 142 }
+  stats: { available_keys: 0, total_ebooks: 0, total_showcase: 0 }
 })
 const keyPools = ref([])
 const myKeys = ref([])
 const ebooks = ref([])
 
 // Modals & Interactive States
-const revealedKeyModal = ref(null) // { title, platform, key_code }
+const revealedKeyModal = ref(null)
 const copiedKeyId = ref(null)
 const showDonateModal = ref(false)
 const showUploadEbookModal = ref(false)
@@ -80,7 +74,7 @@ const ebookForm = ref({
   category: 'Game Design',
   description: '',
   file_format: 'PDF',
-  file_size_label: '5.4 MB',
+  file_size_label: '',
   cover_image_url: '/inspo/rooftop-twilight.jpg'
 })
 
@@ -90,7 +84,7 @@ const cmsForm = ref({
   subtitle: '',
   description: '',
   tag: 'Announcement',
-  url: 'https://itch.io',
+  url: '',
   image_url: '/inspo/sunset-studio.jpg'
 })
 
@@ -104,7 +98,6 @@ function showToast(msg) {
 async function apiFetch(path, options = {}) {
   const headers = {
     'Content-Type': 'application/json',
-    'X-Demo-Role': demoRole.value,
     ...(options.headers || {})
   }
   const res = await fetch(`/api/go${path}`, {
@@ -136,26 +129,20 @@ async function loadAllData() {
     myKeys.value = myKeysData.claimed_keys || []
     ebooks.value = ebooksData.ebooks || []
   } catch (e) {
-    showToast(`Sync notice: ${e.message}`)
+    showToast(`Notice: ${e.message}`)
   } finally {
     loading.value = false
   }
 }
 
-async function switchWorkshopRole(role) {
-  demoRole.value = role
+async function logout() {
   try {
-    await apiFetch(`/auth/dev-switch?role=${role}`, { method: 'POST' })
+    await apiFetch('/auth/logout', { method: 'POST' })
+    currentUser.value = null
+    myKeys.value = []
+    if (activeSection.value === 'cms') activeSection.value = 'explore'
+    showToast('Signed out.')
     await loadAllData()
-    const labels = {
-      guest: 'Public Visitor (Unauthenticated)',
-      member: 'Verified TriGameDev Discord Member',
-      og: 'OG Role Admin (Full CMS & Portal Access)'
-    }
-    showToast(`Switched view to: ${labels[role]}`)
-    if (role !== 'og' && activeSection.value === 'cms') {
-      activeSection.value = 'explore'
-    }
   } catch (e) {
     showToast(e.message)
   }
@@ -163,7 +150,7 @@ async function switchWorkshopRole(role) {
 
 async function claimKeyFromPool(pool) {
   if (!currentUser.value) {
-    showToast('Please log in with Discord (or select Member/OG in the top bar) to claim keys!')
+    showToast('Please sign in with Discord to claim keys.')
     return
   }
   try {
@@ -237,7 +224,7 @@ async function submitEbookUpload() {
       category: 'Game Design',
       description: '',
       file_format: 'PDF',
-      file_size_label: '5.4 MB',
+      file_size_label: '',
       cover_image_url: '/inspo/rooftop-twilight.jpg'
     }
     showToast('Ebook added to the direct-download library!')
@@ -249,7 +236,7 @@ async function submitEbookUpload() {
 
 function downloadEbook(book) {
   if (!currentUser.value) {
-    showToast('Log in with your TriGameDev Discord account to download ebooks.')
+    showToast('Sign in with your TriGameDev Discord account to download ebooks.')
     return
   }
   window.open(`/api/go/tgd/library/download?id=${book.id}`, '_blank')
@@ -306,7 +293,6 @@ function copyCode(code, id) {
 }
 
 const activeJam = computed(() => overview.value.jams?.[0] || null)
-const featuredGame = computed(() => overview.value.showcase?.[0] || null)
 const nextEvent = computed(() => overview.value.events?.[0] || null)
 
 const filteredShowcase = computed(() => {
@@ -343,6 +329,11 @@ const filteredEbooks = computed(() => {
 })
 
 onMounted(() => {
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('error') === 'discord_oauth_not_configured') {
+    showToast('Discord OAuth credentials are not set in /opt/infra/.env yet.')
+    window.history.replaceState({}, '', '/')
+  }
   loadAllData()
 })
 </script>
@@ -360,7 +351,7 @@ onMounted(() => {
       </div>
     </transition>
 
-    <!-- Main Dashboard App Frame (Matches design-inspo/original-0be435d71393e3045dac8bc76bc8b7f4.webp) -->
+    <!-- Main Dashboard App Frame -->
     <div
       class="flex-1 w-full max-w-[1640px] mx-auto bg-[#1b1b26] rounded-[28px] border border-white/[0.07] shadow-[0_30px_90px_rgba(0,0,0,0.65)] overflow-hidden grid grid-cols-1 lg:grid-cols-[76px_1fr_340px]"
     >
@@ -400,7 +391,6 @@ onMounted(() => {
             "
             :title="item.label"
           >
-            <!-- Left Active Pill Bar -->
             <span
               v-if="activeSection === item.id"
               class="hidden lg:block absolute -left-3 w-1.5 h-6 rounded-r-full bg-gradient-to-b from-[#8b5cf6] to-[#ff4d8d]"
@@ -415,9 +405,10 @@ onMounted(() => {
           </button>
         </nav>
 
-        <!-- OG Admin CMS Button at Bottom of Rail -->
+        <!-- OG Admin CMS Button at Bottom of Rail (Only shown if logged in as OG Admin) -->
         <div class="flex items-center">
           <button
+            v-if="currentUser?.is_og_admin"
             @click="activeSection = 'cms'"
             class="relative w-11 h-11 rounded-2xl flex items-center justify-center transition cursor-pointer"
             :class="
@@ -434,45 +425,20 @@ onMounted(() => {
 
       <!-- 2. CENTER MAIN STAGE -->
       <main class="p-5 sm:p-8 flex flex-col gap-7 overflow-y-auto">
-        <!-- Top Search & Workshop Role Bar -->
-        <header class="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-4">
-          <!-- Search Bar (Matches dark slate rounded input in inspo) -->
+        <!-- Top Search Bar -->
+        <header class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
           <div class="relative flex-1 max-w-xl">
             <Search class="w-4 h-4 text-[#8e8ea9] absolute left-4 top-1/2 -translate-y-1/2" />
             <input
               v-model="searchQuery"
               type="text"
-              placeholder='Search TriGameDev games, Steam keys, shaders, or events...'
+              placeholder="Search TriGameDev games, keys, ebooks, or events..."
               class="w-full pl-11 pr-4 py-3 rounded-2xl bg-[#252438] border border-white/[0.06] text-sm text-white placeholder-[#7c7c9a] focus:outline-none focus:border-[#8b5cf6] transition"
             />
           </div>
-
-          <!-- Interactive Role Switcher (For Step 5 UI Workshop & Testing) -->
-          <div class="flex flex-wrap items-center gap-2 bg-[#232234] p-1.5 rounded-2xl border border-white/[0.06]">
-            <span class="text-[11px] uppercase tracking-wider font-semibold text-[#8e8ea9] px-2.5">
-              Discord Role Preview:
-            </span>
-            <button
-              v-for="r in [
-                { id: 'guest', label: 'Public Guest' },
-                { id: 'member', label: 'Server Member' },
-                { id: 'og', label: 'OG Role (Admin)' }
-              ]"
-              :key="r.id"
-              @click="switchWorkshopRole(r.id)"
-              class="px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer"
-              :class="
-                demoRole === r.id
-                  ? 'bg-gradient-to-r from-[#6c5ce7] to-[#8b5cf6] text-white shadow-md shadow-[#6c5ce7]/30'
-                  : 'text-[#9e9eb8] hover:text-white'
-              "
-            >
-              {{ r.label }}
-            </button>
-          </div>
         </header>
 
-        <!-- Horizontal Category Underline Tabs (Matches Explore / Stats / Resources / Collections / Create) -->
+        <!-- Horizontal Category Underline Tabs -->
         <div class="flex items-center justify-between border-b border-white/[0.07] pb-1 overflow-x-auto gap-6">
           <div class="flex items-center gap-7 text-sm font-medium shrink-0">
             <button
@@ -503,22 +469,16 @@ onMounted(() => {
               ></span>
             </button>
           </div>
-
-          <div class="hidden md:flex items-center gap-2 text-xs text-[#8e8ea9] shrink-0 pb-2">
-            <span class="w-2 h-2 rounded-full bg-[#00f5d4] animate-pulse"></span>
-            <span>{{ overview.stats?.discord_online || 142 }} Devs Online in Discord</span>
-          </div>
         </div>
 
         <!-- =====================================================================
-             VIEW 1: EXPLORE HUB (Hero + 3-Col Showcase + 7-Col Strip + Bottom CTA)
+             VIEW 1: EXPLORE HUB
              ===================================================================== -->
         <div v-if="activeSection === 'explore'" class="flex flex-col gap-8">
           <!-- Full-Width Lofi Sunset Hero Banner -->
           <section
             class="relative rounded-3xl overflow-hidden border border-white/[0.1] min-h-[230px] flex items-center p-6 sm:p-10 shadow-2xl"
           >
-            <!-- Lofi Sunset Studio Background Image + Gradient Mesh -->
             <img
               src="/inspo/sunset-studio.jpg"
               alt="TriGameDev Lofi Sunset Banner"
@@ -530,17 +490,22 @@ onMounted(() => {
 
             <div class="relative z-10 max-w-xl flex flex-col gap-4">
               <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/15 w-fit text-xs font-semibold text-[#ff7eb3]">
-                <Radio class="w-3.5 h-3.5 text-[#ff4d8d] animate-pulse" />
+                <Radio class="w-3.5 h-3.5 text-[#ff4d8d]" />
                 <span>{{ activeJam ? `${activeJam.month_label} • LIVE JAM` : 'TRIGAMEDEV COLLECTIVE' }}</span>
               </div>
 
               <h1 class="text-2xl sm:text-4xl font-extrabold tracking-tight leading-tight text-white">
-                {{ activeJam ? activeJam.title : 'Build Games Together in the Tri-Cities & Beyond' }}
+                {{ activeJam ? activeJam.title : 'TriGameDev Community Hub' }}
               </h1>
 
               <p class="text-sm sm:text-base text-white/85 leading-relaxed">
-                Theme: <span class="font-mono font-semibold text-[#ffd166]">{{ activeJam?.theme }}</span> —
-                {{ activeJam?.description }}
+                <template v-if="activeJam">
+                  Theme: <span class="font-mono font-semibold text-[#ffd166]">{{ activeJam.theme }}</span> —
+                  {{ activeJam.description }}
+                </template>
+                <template v-else>
+                  Connect with local & indie game developers on Discord. Share builds, join monthly jams, swap keys, and explore community resources.
+                </template>
               </p>
 
               <div class="flex flex-wrap items-center gap-3 pt-1">
@@ -548,62 +513,62 @@ onMounted(() => {
                   @click="activeSection = 'jams'"
                   class="px-6 py-2.5 rounded-xl bg-white text-[#18162b] font-bold text-sm shadow-lg hover:bg-[#f0ecff] transition cursor-pointer"
                 >
-                  Join Monthly Jam
+                  Monthly Jams
                 </button>
                 <button
                   @click="activeSection = 'keys'"
                   class="px-5 py-2.5 rounded-xl bg-black/45 hover:bg-black/65 text-white border border-white/20 backdrop-blur-md font-semibold text-sm flex items-center gap-2 transition cursor-pointer"
                 >
                   <KeyRound class="w-4 h-4 text-[#00f5d4]" />
-                  <span>Key Vault ({{ overview.stats?.available_keys }} Available)</span>
+                  <span>Key Vault ({{ overview.stats?.available_keys || 0 }} Available)</span>
                 </button>
               </div>
             </div>
           </section>
 
-          <!-- 3-Column Featured Showcase Cards (Directly modeled on inspo NFT cards + wireframe 3-col block) -->
+          <!-- 3-Column Featured Showcase Cards -->
           <section class="flex flex-col gap-4">
             <div class="flex items-center justify-between">
-              <div>
-                <h2 class="text-xl font-bold text-white flex items-center gap-2">
-                  <span>Trending Member Showcase</span>
-                  <span class="text-xs px-2.5 py-0.5 rounded-full bg-[#6c5ce7]/25 text-[#a78bfa] font-semibold">
-                    Community Builds
-                  </span>
-                </h2>
-              </div>
+              <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                <span>Member Showcase</span>
+                <span class="text-xs px-2.5 py-0.5 rounded-full bg-[#6c5ce7]/25 text-[#a78bfa] font-semibold">
+                  Community Builds
+                </span>
+              </h2>
               <button
                 @click="activeSection = 'showcase'"
                 class="px-4 py-2 rounded-xl bg-[#6c5ce7] hover:bg-[#5b4bc4] text-xs font-semibold text-white flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-[#6c5ce7]/25"
               >
-                <span>View All Builds</span>
+                <span>View All</span>
                 <ChevronRight class="w-4 h-4" />
               </button>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div
+              v-if="filteredShowcase.length === 0"
+              class="p-8 rounded-3xl bg-[#242336] border border-white/[0.06] text-center text-sm text-[#8e8ea9]"
+            >
+              No showcase games published yet. OG Admins can add projects from the CMS.
+            </div>
+
+            <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-5">
               <article
                 v-for="game in filteredShowcase.slice(0, 3)"
                 :key="game.id"
                 class="group bg-[#242336] rounded-3xl p-3.5 border border-white/[0.06] hover:border-[#8b5cf6]/50 transition-all flex flex-col justify-between shadow-xl"
               >
-                <!-- Artwork Frame with Top-Right Pill & Bottom Frosted Glass Bar -->
                 <div class="relative h-56 rounded-2xl overflow-hidden bg-[#181726]">
                   <img
                     :src="game.thumbnail_url || '/inspo/sunset-studio.jpg'"
                     :alt="game.title"
                     class="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                   />
-
-                  <!-- Top-Right View Counter Pill (From Inspo) -->
                   <div
                     class="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-white/90 text-[#14141d] text-[11px] font-bold flex items-center gap-1 shadow"
                   >
                     <Eye class="w-3.5 h-3.5" />
                     <span>{{ game.views_count }}</span>
                   </div>
-
-                  <!-- Bottom Translucent Glass Title Bar with Neon Action Orb -->
                   <div
                     class="absolute bottom-3 left-3 right-3 p-3 rounded-2xl bg-[#1c1b29]/80 backdrop-blur-md border border-white/15 flex items-center justify-between gap-2"
                   >
@@ -615,23 +580,20 @@ onMounted(() => {
                       :href="game.play_url || '#'"
                       target="_blank"
                       class="w-9 h-9 rounded-full bg-gradient-to-tr from-[#ff2e7e] to-[#ff6b9d] flex items-center justify-center text-white shrink-0 shadow-lg shadow-[#ff2e7e]/40 hover:scale-105 transition"
-                      title="Play on Itch.io"
                     >
                       <Radio class="w-4 h-4" />
                     </a>
                   </div>
                 </div>
 
-                <!-- Card Footer Metadata & Dual Buttons (Matches Inspo Card Bottom) -->
                 <div class="pt-4 px-1 flex flex-col gap-3">
                   <div class="flex items-center justify-between text-xs">
-                    <span class="text-[#8e8ea9]">Engine / Stack:</span>
+                    <span class="text-[#8e8ea9]">Engine:</span>
                     <span class="font-semibold text-[#00f5d4] flex items-center gap-1">
                       <Sparkles class="w-3.5 h-3.5 text-[#8b5cf6]" />
                       {{ game.engine }}
                     </span>
                   </div>
-
                   <div class="grid grid-cols-2 gap-2.5">
                     <a
                       :href="game.play_url || '#'"
@@ -653,24 +615,21 @@ onMounted(() => {
             </div>
           </section>
 
-          <!-- 7-Column Compact Gallery & Community Snapshot Strip (Matches wireframe row of 7 squares) -->
-          <section class="flex flex-col gap-3">
+          <!-- 7-Column Compact Gallery Strip -->
+          <section v-if="overview.gallery && overview.gallery.length > 0" class="flex flex-col gap-3">
             <div class="flex items-center justify-between">
-              <h2 class="text-base font-bold text-white flex items-center gap-2">
-                <span>Recent Gallery & Meetup Snaps</span>
-                <span class="text-xs text-[#8e8ea9] font-normal">(Click to inspect)</span>
-              </h2>
+              <h2 class="text-base font-bold text-white">Recent Gallery Snaps</h2>
               <button
                 @click="activeSection = 'media'"
                 class="text-xs font-semibold text-[#a78bfa] hover:underline cursor-pointer"
               >
-                Open Full Gallery & Videos →
+                Open Gallery & Videos →
               </button>
             </div>
 
             <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3">
               <button
-                v-for="snap in (overview.gallery || []).slice(0, 7)"
+                v-for="snap in overview.gallery.slice(0, 7)"
                 :key="snap.id"
                 @click="selectedLightbox = snap"
                 class="group relative aspect-square rounded-2xl overflow-hidden bg-[#242336] border border-white/[0.07] hover:border-[#ff4d8d] transition cursor-pointer"
@@ -680,39 +639,36 @@ onMounted(() => {
                   :alt="snap.title"
                   class="w-full h-full object-cover group-hover:scale-110 transition duration-300"
                 />
-                <div
-                  class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition flex items-end p-2"
-                >
-                  <span class="text-[11px] font-semibold text-white leading-tight line-clamp-2 text-left">
-                    {{ snap.title }}
-                  </span>
-                </div>
               </button>
             </div>
           </section>
 
-          <!-- Two-Column Quick Feed: Latest News & Member Portals Preview -->
+          <!-- Two-Column Quick Feed: Latest News & Member Portals -->
           <section class="grid grid-cols-1 xl:grid-cols-2 gap-5">
             <!-- Latest News & Discord Announcements -->
             <div class="bg-[#242336] rounded-3xl p-5 border border-white/[0.06] flex flex-col gap-4">
               <div class="flex items-center justify-between">
                 <h3 class="font-bold text-base text-white flex items-center gap-2">
                   <Newspaper class="w-4 h-4 text-[#ff9f43]" />
-                  <span>News & Discord Announcements</span>
+                  <span>News & Announcements</span>
                 </h3>
                 <button
                   @click="activeSection = 'news'"
                   class="text-xs text-[#a78bfa] hover:underline cursor-pointer"
                 >
-                  Read All
+                  View All
                 </button>
               </div>
 
-              <div class="flex flex-col gap-3">
+              <div v-if="!overview.news || overview.news.length === 0" class="text-xs text-[#8e8ea9] py-6 text-center">
+                No announcements posted yet.
+              </div>
+
+              <div v-else class="flex flex-col gap-3">
                 <div
-                  v-for="post in (overview.news || []).slice(0, 3)"
+                  v-for="post in overview.news.slice(0, 3)"
                   :key="post.id"
-                  class="p-3.5 rounded-2xl bg-[#1b1a29] border border-white/[0.04] hover:border-white/10 transition flex flex-col gap-1"
+                  class="p-3.5 rounded-2xl bg-[#1b1a29] border border-white/[0.04] flex flex-col gap-1"
                 >
                   <div class="flex items-center justify-between text-[11px]">
                     <span class="px-2 py-0.5 rounded-md bg-[#6c5ce7]/20 text-[#a78bfa] font-semibold">
@@ -726,21 +682,20 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- Member Vault Quick Access (Key Sharing + Ebooks) -->
+            <!-- Member Vault Quick Access -->
             <div class="bg-[#242336] rounded-3xl p-5 border border-white/[0.06] flex flex-col justify-between gap-4">
               <div class="flex flex-col gap-2">
                 <div class="flex items-center justify-between">
                   <span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#00f5d4]/15 text-[#00f5d4]">
                     DISCORD MEMBER PERKS
                   </span>
-                  <span class="text-xs text-[#8e8ea9]">Single-Redemption Key Pool + Direct Ebooks</span>
                 </div>
                 <h3 class="text-lg font-bold text-white mt-1">
-                  TriGameDev Key Sharing Portal & Ebook Library
+                  Key Sharing Portal & Ebook Library
                 </h3>
                 <p class="text-xs text-[#9e9eb8] leading-relaxed">
-                  Members of the TriGameDev Discord can donate spare Steam/Itch keys, claim one key per game pool into their permanent
-                  <strong class="text-white">My Keys</strong> vault, and directly download community game dev ebooks.
+                  Sign in with your TriGameDev Discord account to donate or claim game keys into your permanent
+                  <strong class="text-white">My Keys</strong> vault and download community ebooks.
                 </p>
               </div>
 
@@ -752,7 +707,7 @@ onMounted(() => {
                   <KeyRound class="w-5 h-5 text-[#ff4d8d] mb-2 group-hover:scale-110 transition" />
                   <div class="font-bold text-sm text-white">Key Sharing Vault</div>
                   <div class="text-xs text-[#00f5d4] mt-0.5">
-                    {{ overview.stats?.available_keys }} keys ready to claim →
+                    {{ overview.stats?.available_keys || 0 }} keys available →
                   </div>
                 </button>
 
@@ -763,35 +718,35 @@ onMounted(() => {
                   <BookOpen class="w-5 h-5 text-[#ff9f43] mb-2 group-hover:scale-110 transition" />
                   <div class="font-bold text-sm text-white">Ebook Library</div>
                   <div class="text-xs text-[#ff9f43] mt-0.5">
-                    {{ overview.stats?.total_ebooks }} direct-download books →
+                    {{ overview.stats?.total_ebooks || 0 }} direct-download books →
                   </div>
                 </button>
               </div>
             </div>
           </section>
 
-          <!-- Bottom Bar (Matches wireframe full-width bottom bar with input/CTA) -->
+          <!-- Bottom Discord Connect Bar -->
           <section
+            v-if="!currentUser"
             class="p-4 sm:px-6 rounded-2xl bg-[#242336] border border-white/[0.07] flex flex-col sm:flex-row items-center justify-between gap-4"
           >
             <div class="flex items-center gap-3">
               <div class="w-3 h-3 rounded-full bg-[#ff4d8d]"></div>
               <p class="text-xs sm:text-sm text-[#c4c4dc]">
-                Want your game featured in the showcase or have spare keys to donate? Authenticate via the
-                <strong class="text-white">TriGameDev Discord</strong>.
+                Member of the <strong class="text-white">TriGameDev Discord</strong>? Sign in to unlock the Key Vault, Ebook Library, and OG CMS.
               </p>
             </div>
             <a
               href="/api/go/auth/discord/login"
-              class="px-5 py-2.5 rounded-xl bg-[#6c5ce7] hover:bg-[#5a4ad1] text-white text-xs font-bold whitespace-nowrap shadow-md shadow-[#6c5ce7]/30 transition"
+              class="px-5 py-2.5 rounded-xl bg-[#5865F2] hover:bg-[#4752c4] text-white text-xs font-bold whitespace-nowrap shadow-md transition"
             >
-              Connect Discord Account
+              Sign In with Discord
             </a>
           </section>
         </div>
 
         <!-- =====================================================================
-             VIEW 2: KEY SHARING PORTAL (Pools + Single Redemption + 'My Keys' Vault)
+             VIEW 2: KEY SHARING PORTAL
              ===================================================================== -->
         <div v-else-if="activeSection === 'keys'" class="flex flex-col gap-6">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -807,7 +762,6 @@ onMounted(() => {
             </div>
 
             <div class="flex items-center gap-2.5">
-              <!-- Sub-navigation: Available Pools vs My Keys -->
               <div class="bg-[#232234] p-1 rounded-xl border border-white/10 flex items-center">
                 <button
                   @click="keySubTab = 'pools'"
@@ -837,7 +791,6 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- Unauthenticated Gate Banner -->
           <div
             v-if="!currentUser"
             class="p-6 rounded-3xl bg-[#242336] border border-[#ff4d8d]/40 flex flex-col sm:flex-row items-center justify-between gap-4"
@@ -845,74 +798,79 @@ onMounted(() => {
             <div class="flex items-center gap-4">
               <Lock class="w-8 h-8 text-[#ff4d8d] shrink-0" />
               <div>
-                <h3 class="font-bold text-white">Discord Member Login Required to Claim or View Keys</h3>
+                <h3 class="font-bold text-white">Discord Member Login Required</h3>
                 <p class="text-xs text-[#9e9eb8]">
-                  You can browse the pool counts below, or switch the top preview bar to
-                  <strong>Server Member</strong> / <strong>OG Role</strong> to test claiming right now.
+                  Sign in with your TriGameDev Discord account to donate keys, redeem keys, or view your claimed keys.
                 </p>
               </div>
             </div>
-            <button
-              @click="switchWorkshopRole('member')"
-              class="px-4 py-2 rounded-xl bg-[#6c5ce7] text-white text-xs font-bold shrink-0 cursor-pointer"
+            <a
+              href="/api/go/auth/discord/login"
+              class="px-4 py-2 rounded-xl bg-[#5865F2] text-white text-xs font-bold shrink-0"
             >
-              Simulate Member Login
-            </button>
+              Sign In with Discord
+            </a>
           </div>
 
-          <!-- Sub-Tab A: Key Pools Grid -->
-          <div v-if="keySubTab === 'pools'" class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div v-if="keySubTab === 'pools'">
             <div
-              v-for="pool in filteredKeyPools"
-              :key="pool.id"
-              class="bg-[#242336] rounded-3xl p-4 border border-white/[0.07] flex flex-col sm:flex-row gap-4 justify-between"
+              v-if="filteredKeyPools.length === 0"
+              class="p-10 rounded-3xl bg-[#242336] border border-white/[0.06] text-center text-sm text-[#8e8ea9]"
             >
-              <img
-                :src="pool.cover_image_url || '/inspo/sunset-studio.jpg'"
-                :alt="pool.title"
-                class="w-full sm:w-36 h-36 rounded-2xl object-cover shrink-0"
-              />
-              <div class="flex-1 flex flex-col justify-between gap-3">
-                <div>
-                  <div class="flex items-center justify-between gap-2">
-                    <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#6c5ce7]/25 text-[#a78bfa]">
-                      {{ pool.platform }}
-                    </span>
-                    <span
-                      class="text-xs font-mono font-semibold"
-                      :class="pool.available_count > 0 ? 'text-[#00f5d4]' : 'text-[#ff4d8d]'"
-                    >
-                      {{ pool.available_count }} / {{ pool.total_count }} Keys Left
-                    </span>
+              No key pools have been added yet.
+            </div>
+            <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div
+                v-for="pool in filteredKeyPools"
+                :key="pool.id"
+                class="bg-[#242336] rounded-3xl p-4 border border-white/[0.07] flex flex-col sm:flex-row gap-4 justify-between"
+              >
+                <img
+                  :src="pool.cover_image_url || '/inspo/sunset-studio.jpg'"
+                  :alt="pool.title"
+                  class="w-full sm:w-36 h-36 rounded-2xl object-cover shrink-0"
+                />
+                <div class="flex-1 flex flex-col justify-between gap-3">
+                  <div>
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#6c5ce7]/25 text-[#a78bfa]">
+                        {{ pool.platform }}
+                      </span>
+                      <span
+                        class="text-xs font-mono font-semibold"
+                        :class="pool.available_count > 0 ? 'text-[#00f5d4]' : 'text-[#ff4d8d]'"
+                      >
+                        {{ pool.available_count }} / {{ pool.total_count }} Keys Left
+                      </span>
+                    </div>
+                    <h3 class="font-bold text-base text-white mt-1.5">{{ pool.title }}</h3>
+                    <p class="text-xs text-[#9e9eb8] line-clamp-2 mt-1">{{ pool.description }}</p>
                   </div>
-                  <h3 class="font-bold text-base text-white mt-1.5">{{ pool.title }}</h3>
-                  <p class="text-xs text-[#9e9eb8] line-clamp-2 mt-1">{{ pool.description }}</p>
-                </div>
 
-                <div class="flex items-center justify-between pt-2 border-t border-white/[0.06]">
-                  <span class="text-[11px] text-[#7c7c9a]">Donated by {{ pool.donated_by_name }}</span>
+                  <div class="flex items-center justify-between pt-2 border-t border-white/[0.06]">
+                    <span class="text-[11px] text-[#7c7c9a]">Donated by {{ pool.donated_by_name }}</span>
 
-                  <button
-                    v-if="pool.claimed_by_user"
-                    @click="keySubTab = 'my-keys'"
-                    class="px-3.5 py-1.5 rounded-xl bg-[#00f5d4]/15 text-[#00f5d4] border border-[#00f5d4]/30 text-xs font-bold cursor-pointer"
-                  >
-                    ✓ Claimed (View in My Keys)
-                  </button>
-                  <button
-                    v-else-if="pool.available_count > 0"
-                    @click="claimKeyFromPool(pool)"
-                    class="px-4 py-1.5 rounded-xl bg-gradient-to-r from-[#6c5ce7] to-[#8b5cf6] hover:opacity-95 text-white text-xs font-bold shadow-md shadow-[#6c5ce7]/30 cursor-pointer"
-                  >
-                    Claim 1 Key
-                  </button>
-                  <span v-else class="text-xs font-semibold text-[#7c7c9a]">Pool Depleted</span>
+                    <button
+                      v-if="pool.claimed_by_user"
+                      @click="keySubTab = 'my-keys'"
+                      class="px-3.5 py-1.5 rounded-xl bg-[#00f5d4]/15 text-[#00f5d4] border border-[#00f5d4]/30 text-xs font-bold cursor-pointer"
+                    >
+                      ✓ Claimed (View in My Keys)
+                    </button>
+                    <button
+                      v-else-if="pool.available_count > 0"
+                      @click="claimKeyFromPool(pool)"
+                      class="px-4 py-1.5 rounded-xl bg-gradient-to-r from-[#6c5ce7] to-[#8b5cf6] hover:opacity-95 text-white text-xs font-bold shadow-md shadow-[#6c5ce7]/30 cursor-pointer"
+                    >
+                      Claim 1 Key
+                    </button>
+                    <span v-else class="text-xs font-semibold text-[#7c7c9a]">Pool Depleted</span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Sub-Tab B: MY KEYS (Permanent User Key Vault) -->
           <div v-else class="flex flex-col gap-4">
             <div
               v-if="myKeys.length === 0"
@@ -921,14 +879,8 @@ onMounted(() => {
               <Gift class="w-10 h-10 text-[#ff4d8d]" />
               <h3 class="font-bold text-base text-white">You haven't claimed any keys yet</h3>
               <p class="text-xs text-[#9e9eb8] max-w-md">
-                Head over to the Available Pools tab and redeem a key—it will be permanently bound to your Discord account and listed right here.
+                Keys you redeem from community pools are permanently bound to your account and displayed here.
               </p>
-              <button
-                @click="keySubTab = 'pools'"
-                class="px-4 py-2 rounded-xl bg-[#6c5ce7] text-white text-xs font-bold cursor-pointer"
-              >
-                Browse Key Pools
-              </button>
             </div>
 
             <div
@@ -973,17 +925,17 @@ onMounted(() => {
         </div>
 
         <!-- =====================================================================
-             VIEW 3: EBOOK LIBRARY (Direct Downloads for Members)
+             VIEW 3: EBOOK LIBRARY
              ===================================================================== -->
         <div v-else-if="activeSection === 'library'" class="flex flex-col gap-6">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 class="text-2xl font-extrabold text-white flex items-center gap-2.5">
                 <BookOpen class="w-6 h-6 text-[#ff9f43]" />
-                <span>TriGameDev Ebook & Reference Library</span>
+                <span>TriGameDev Ebook Library</span>
               </h1>
               <p class="text-xs sm:text-sm text-[#9e9eb8] mt-1">
-                Direct-download game design books, shader grimoires, and engine field manuals curated by the community.
+                Direct-download game design books and reference manuals for TriGameDev members.
               </p>
             </div>
 
@@ -997,7 +949,14 @@ onMounted(() => {
             </button>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div
+            v-if="filteredEbooks.length === 0"
+            class="p-10 rounded-3xl bg-[#242336] border border-white/[0.06] text-center text-sm text-[#8e8ea9]"
+          >
+            No ebooks have been uploaded yet.
+          </div>
+
+          <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div
               v-for="book in filteredEbooks"
               :key="book.id"
@@ -1015,7 +974,7 @@ onMounted(() => {
                       {{ book.category }}
                     </span>
                     <span class="text-xs font-mono text-[#8e8ea9]">
-                      {{ book.file_format }} • {{ book.file_size_label }}
+                      {{ book.file_format }} {{ book.file_size_label ? `• ${book.file_size_label}` : '' }}
                     </span>
                   </div>
                   <h3 class="font-bold text-base text-white mt-1.5">{{ book.title }}</h3>
@@ -1043,7 +1002,13 @@ onMounted(() => {
              ===================================================================== -->
         <div v-else-if="activeSection === 'events'" class="flex flex-col gap-5">
           <h1 class="text-2xl font-extrabold text-white">Upcoming Events & Discord Stages</h1>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div
+            v-if="!overview.events || overview.events.length === 0"
+            class="p-10 rounded-3xl bg-[#242336] border border-white/[0.06] text-center text-sm text-[#8e8ea9]"
+          >
+            No upcoming events scheduled yet.
+          </div>
+          <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             <div
               v-for="ev in overview.events"
               :key="ev.id"
@@ -1069,7 +1034,13 @@ onMounted(() => {
 
         <div v-else-if="activeSection === 'news'" class="flex flex-col gap-5">
           <h1 class="text-2xl font-extrabold text-white">Community News & Announcements</h1>
-          <div class="flex flex-col gap-4">
+          <div
+            v-if="!overview.news || overview.news.length === 0"
+            class="p-10 rounded-3xl bg-[#242336] border border-white/[0.06] text-center text-sm text-[#8e8ea9]"
+          >
+            No news or announcements published yet.
+          </div>
+          <div v-else class="flex flex-col gap-4">
             <article
               v-for="post in overview.news"
               :key="post.id"
@@ -1087,7 +1058,13 @@ onMounted(() => {
 
         <div v-else-if="activeSection === 'jams'" class="flex flex-col gap-5">
           <h1 class="text-2xl font-extrabold text-white">Monthly Game Jams</h1>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div
+            v-if="!overview.jams || overview.jams.length === 0"
+            class="p-10 rounded-3xl bg-[#242336] border border-white/[0.06] text-center text-sm text-[#8e8ea9]"
+          >
+            No game jams posted yet.
+          </div>
+          <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div
               v-for="jam in overview.jams"
               :key="jam.id"
@@ -1121,7 +1098,13 @@ onMounted(() => {
 
         <div v-else-if="activeSection === 'showcase'" class="flex flex-col gap-5">
           <h1 class="text-2xl font-extrabold text-white">Member Game Showcase</h1>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div
+            v-if="filteredShowcase.length === 0"
+            class="p-10 rounded-3xl bg-[#242336] border border-white/[0.06] text-center text-sm text-[#8e8ea9]"
+          >
+            No showcase builds published yet.
+          </div>
+          <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-5">
             <article
               v-for="game in filteredShowcase"
               :key="game.id"
@@ -1151,7 +1134,13 @@ onMounted(() => {
         <div v-else-if="activeSection === 'media'" class="flex flex-col gap-7">
           <div>
             <h1 class="text-2xl font-extrabold text-white mb-4">Community Photo Gallery</h1>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div
+              v-if="!overview.gallery || overview.gallery.length === 0"
+              class="p-10 rounded-3xl bg-[#242336] border border-white/[0.06] text-center text-sm text-[#8e8ea9]"
+            >
+              No gallery photos uploaded yet.
+            </div>
+            <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div
                 v-for="img in overview.gallery"
                 :key="img.id"
@@ -1169,7 +1158,13 @@ onMounted(() => {
 
           <div>
             <h2 class="text-2xl font-extrabold text-white mb-4">Talks & Workshop Videos</h2>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div
+              v-if="!overview.videos || overview.videos.length === 0"
+              class="p-10 rounded-3xl bg-[#242336] border border-white/[0.06] text-center text-sm text-[#8e8ea9]"
+            >
+              No videos archived yet.
+            </div>
+            <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-5">
               <a
                 v-for="vid in overview.videos"
                 :key="vid.id"
@@ -1179,7 +1174,7 @@ onMounted(() => {
               >
                 <div class="relative h-40">
                   <img :src="vid.thumbnail_url || '/inspo/sunset-studio.jpg'" class="w-full h-full object-cover" />
-                  <span class="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/80 text-[11px] font-mono text-white">
+                  <span v-if="vid.duration" class="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/80 text-[11px] font-mono text-white">
                     {{ vid.duration }}
                   </span>
                 </div>
@@ -1194,7 +1189,7 @@ onMounted(() => {
         </div>
 
         <!-- =====================================================================
-             VIEW 5: OG ROLE ADMIN CMS (Restricted to OG Discord Role)
+             VIEW 5: OG ROLE ADMIN CMS
              ===================================================================== -->
         <div v-else-if="activeSection === 'cms'" class="flex flex-col gap-6">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1217,12 +1212,10 @@ onMounted(() => {
             v-if="!currentUser?.is_og_admin"
             class="p-6 rounded-3xl bg-[#242336] border border-[#ff9f43]/40 text-sm text-[#ff9f43]"
           >
-            You must hold the <strong>OG Role</strong> in the TriGameDev Discord Server to publish or delete CMS items.
-            (Use the top bar to switch to <strong>OG Role (Admin)</strong> to test!)
+            You must be signed in via Discord and hold the <strong>OG Role</strong> in the TriGameDev server to access the CMS.
           </div>
 
           <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <!-- Publish Form -->
             <div class="bg-[#242336] rounded-3xl p-6 border border-white/[0.07] flex flex-col gap-4">
               <h2 class="text-lg font-bold text-white">Publish New Community Entry</h2>
 
@@ -1254,7 +1247,6 @@ onMounted(() => {
                 <input
                   v-model="cmsForm.title"
                   type="text"
-                  placeholder="e.g., December Shader Jam or Playtest Night"
                   class="w-full mt-1 px-3.5 py-2.5 rounded-xl bg-[#181726] border border-white/10 text-sm text-white"
                 />
               </div>
@@ -1264,21 +1256,17 @@ onMounted(() => {
                 <input
                   v-model="cmsForm.subtitle"
                   type="text"
-                  placeholder="Summary, Location, Jam Theme, or Creator Handle"
                   class="w-full mt-1 px-3.5 py-2.5 rounded-xl bg-[#181726] border border-white/10 text-sm text-white"
                 />
               </div>
 
               <div>
-                <label class="text-xs text-[#8e8ea9]">Cover Artwork Preset</label>
-                <select
+                <label class="text-xs text-[#8e8ea9]">Cover Image URL</label>
+                <input
                   v-model="cmsForm.image_url"
-                  class="w-full mt-1 px-3 py-2.5 rounded-xl bg-[#181726] border border-white/10 text-sm text-white"
-                >
-                  <option value="/inspo/sunset-studio.jpg">Sunset Synth Studio (/inspo/sunset-studio.jpg)</option>
-                  <option value="/inspo/rooftop-twilight.jpg">Twilight Rooftop (/inspo/rooftop-twilight.jpg)</option>
-                  <option value="/inspo/lofi-room.jpg">Afterhours Lofi Lounge (/inspo/lofi-room.jpg)</option>
-                </select>
+                  type="text"
+                  class="w-full mt-1 px-3.5 py-2.5 rounded-xl bg-[#181726] border border-white/10 text-sm text-white"
+                />
               </div>
 
               <div>
@@ -1294,11 +1282,10 @@ onMounted(() => {
                 @click="publishCMSItem"
                 class="py-3 rounded-xl bg-gradient-to-r from-[#ff9f43] to-[#ff4d8d] text-[#14141d] font-extrabold text-sm cursor-pointer shadow-lg"
               >
-                Publish & Trigger Discord Webhook
+                Publish Entry
               </button>
             </div>
 
-            <!-- Quick Manage Existing Entries -->
             <div class="bg-[#242336] rounded-3xl p-6 border border-white/[0.07] flex flex-col gap-4">
               <h2 class="text-lg font-bold text-white">Manage Live Entries</h2>
               <div class="flex flex-col gap-2.5 max-h-[420px] overflow-y-auto pr-1">
@@ -1349,20 +1336,14 @@ onMounted(() => {
         </div>
       </main>
 
-      <!-- 3. RIGHT CONTEXT SIDEBAR (Modeled directly on Right Featured Panel in original-0be435d71393e3045dac8bc76bc8b7f4.webp) -->
+      <!-- 3. RIGHT CONTEXT SIDEBAR -->
       <aside
         class="bg-gradient-to-b from-[#292643] via-[#211f35] to-[#1d1c2d] border-t lg:border-t-0 lg:border-l border-white/[0.07] p-6 flex flex-col justify-between gap-6"
       >
         <div class="flex flex-col gap-6">
           <!-- Top User Profile & Discord Status Header -->
           <div class="flex items-center justify-between">
-            <div class="flex items-center gap-3">
-              <button
-                class="w-10 h-10 rounded-xl bg-white/[0.06] flex items-center justify-center text-[#c4c4dc] hover:text-white relative"
-              >
-                <Bell class="w-4 h-4" />
-                <span class="w-2 h-2 rounded-full bg-[#ff4d8d] absolute top-2 right-2"></span>
-              </button>
+            <div class="flex items-center gap-3 min-w-0">
               <div v-if="currentUser" class="min-w-0">
                 <div class="text-xs font-bold text-white truncate">{{ currentUser.display_name }}</div>
                 <div class="text-[11px] font-semibold flex items-center gap-1">
@@ -1376,63 +1357,69 @@ onMounted(() => {
                 </div>
               </div>
               <div v-else>
-                <div class="text-xs font-bold text-white">Public Visitor</div>
-                <div class="text-[11px] text-[#8e8ea9]">Not logged in</div>
+                <div class="text-xs font-bold text-white">Guest Visitor</div>
+                <div class="text-[11px] text-[#8e8ea9]">Sign in via Discord</div>
               </div>
             </div>
 
-            <!-- Hexagonal / Rounded Avatar Frame -->
-            <img
-              v-if="currentUser"
-              :src="currentUser.avatar_url"
-              alt="Avatar"
-              class="w-11 h-11 rounded-2xl border-2 border-[#8b5cf6] bg-[#14141d] object-cover"
-            />
+            <div v-if="currentUser" class="flex items-center gap-2">
+              <img
+                :src="currentUser.avatar_url"
+                alt="Avatar"
+                class="w-10 h-10 rounded-2xl border-2 border-[#8b5cf6] bg-[#14141d] object-cover"
+              />
+              <button
+                @click="logout"
+                class="p-2 rounded-xl bg-white/[0.06] hover:bg-white/10 text-[#9e9eb8] hover:text-white cursor-pointer"
+                title="Sign Out"
+              >
+                <LogOut class="w-4 h-4" />
+              </button>
+            </div>
             <a
               v-else
               href="/api/go/auth/discord/login"
-              class="px-3 py-1.5 rounded-xl bg-[#5865F2] text-white text-xs font-bold"
+              class="px-3.5 py-2 rounded-xl bg-[#5865F2] hover:bg-[#4752c4] text-white text-xs font-bold transition"
             >
               Discord Login
             </a>
           </div>
 
-          <!-- Featured Event / Jam Spotlight Card (Matches 'Featured / Metaverse Esports' card in Inspo) -->
+          <!-- Featured Event / Jam Spotlight Card -->
           <div class="flex flex-col gap-3">
             <div class="flex items-center justify-between">
-              <h3 class="font-bold text-sm text-white">Featured Meetup</h3>
+              <h3 class="font-bold text-sm text-white">Featured Spotlight</h3>
               <button
                 @click="activeSection = 'events'"
                 class="text-xs text-[#c4c4dc] hover:text-white underline cursor-pointer"
               >
-                View More
+                Events
               </button>
             </div>
 
             <div class="bg-[#1b1a29] rounded-3xl p-4 border border-white/[0.08] flex flex-col gap-4 shadow-xl">
               <div class="relative h-44 rounded-2xl overflow-hidden">
                 <img
-                  src="/inspo/rooftop-twilight.jpg"
+                  :src="nextEvent?.cover_image_url || '/inspo/rooftop-twilight.jpg'"
                   alt="Featured Event"
                   class="w-full h-full object-cover"
                 />
                 <span
                   class="absolute bottom-2.5 right-2.5 px-2.5 py-1 rounded-lg bg-white text-[#14141d] text-[10px] font-extrabold shadow"
                 >
-                  By TriGameDev OGs ✓
+                  TriGameDev ✓
                 </span>
               </div>
 
-              <!-- Inner Pill Bar with Pink Radio Button -->
               <div
                 class="p-3 rounded-2xl bg-[#27263b] border border-white/10 flex items-center justify-between gap-2"
               >
                 <div class="min-w-0">
                   <div class="font-bold text-xs text-white truncate">
-                    {{ nextEvent?.title || 'Playtest Night & Jam Showcase' }}
+                    {{ nextEvent?.title || 'TriGameDev Community Hub' }}
                   </div>
                   <div class="text-[10px] text-[#9e9eb8] truncate">
-                    {{ nextEvent?.location || 'Discord Stage + Co-Op' }}
+                    {{ nextEvent?.location || 'Join us on Discord' }}
                   </div>
                 </div>
                 <span
@@ -1442,52 +1429,47 @@ onMounted(() => {
                 </span>
               </div>
 
-              <!-- 3-Row Metrics Table (Matches Total Volume / Items / Owners in Inspo) -->
               <div class="flex flex-col gap-2 text-xs px-1">
                 <div class="flex items-center justify-between">
                   <span class="text-[#8e8ea9]">Available Vault Keys:</span>
-                  <span class="font-bold text-[#00f5d4]">{{ overview.stats?.available_keys }} Keys</span>
+                  <span class="font-bold text-[#00f5d4]">{{ overview.stats?.available_keys || 0 }}</span>
                 </div>
                 <div class="flex items-center justify-between">
                   <span class="text-[#8e8ea9]">Library Ebooks:</span>
-                  <span class="font-bold text-[#00f5d4]">{{ overview.stats?.total_ebooks }} Books</span>
+                  <span class="font-bold text-[#00f5d4]">{{ overview.stats?.total_ebooks || 0 }}</span>
                 </div>
                 <div class="flex items-center justify-between">
-                  <span class="text-[#8e8ea9]">RSVP / Jammers:</span>
-                  <span class="font-bold text-[#00f5d4]">{{ activeJam?.participants_count || 48 }} Devs</span>
+                  <span class="text-[#8e8ea9]">Showcase Games:</span>
+                  <span class="font-bold text-[#00f5d4]">{{ overview.stats?.total_showcase || 0 }}</span>
                 </div>
               </div>
 
-              <!-- Dual CTA Buttons -->
               <div class="grid grid-cols-2 gap-2.5 pt-1">
                 <button
                   @click="activeSection = 'keys'"
                   class="py-2 rounded-xl bg-gradient-to-r from-[#6c5ce7] to-[#8b5cf6] text-white text-xs font-bold cursor-pointer shadow-md shadow-[#6c5ce7]/25"
                 >
-                  Claim a Key
+                  Key Vault
                 </button>
                 <button
                   @click="activeSection = 'library'"
                   class="py-2 rounded-xl border border-white/20 hover:border-white/40 text-white text-xs font-bold cursor-pointer"
                 >
-                  Ebook Vault
+                  Ebook Library
                 </button>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Bottom Activity / Pulse Chart Widget (Matches 'Price history' wave widget in Inspo) -->
+        <!-- Bottom Pulse Decorative Graphic -->
         <div class="flex flex-col gap-2 pt-2 border-t border-white/[0.06]">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-white">Community Activity Pulse</span>
-            <span class="text-xs font-bold text-[#00f5d4]">+87% ↑</span>
+            <span class="text-xs font-bold text-white">TriGameDev Signal</span>
+            <span class="text-xs font-bold text-[#00f5d4]">ONLINE</span>
           </div>
-          <p class="text-[11px] text-[#8e8ea9]">Jam commits, key drops & Discord stage hours</p>
-
-          <!-- Decorative Neon Wave SVG -->
-          <div class="relative pt-4 pb-1">
-            <svg viewBox="0 0 260 70" class="w-full h-16 overflow-visible">
+          <div class="relative pt-2 pb-1">
+            <svg viewBox="0 0 260 70" class="w-full h-14 overflow-visible">
               <defs>
                 <linearGradient id="pulseGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.45" />
@@ -1564,7 +1546,6 @@ onMounted(() => {
             <input
               v-model="donateForm.title"
               type="text"
-              placeholder="e.g., Hollow Knight or SpriteStack"
               class="w-full mt-1 px-3 py-2 rounded-xl bg-[#14141d] border border-white/10 text-sm text-white"
             />
           </div>
@@ -1586,16 +1567,14 @@ onMounted(() => {
           <input
             v-model="donateForm.description"
             type="text"
-            placeholder="Why should fellow TriGameDev members check this out?"
             class="w-full mt-1 px-3 py-2 rounded-xl bg-[#14141d] border border-white/10 text-sm text-white"
           />
         </div>
         <div>
-          <label class="text-xs text-[#8e8ea9]">Paste Key Codes (One key per line — creates a multi-key pool)</label>
+          <label class="text-xs text-[#8e8ea9]">Paste Key Codes (One key per line)</label>
           <textarea
             v-model="donateForm.raw_keys"
             rows="4"
-            placeholder="XXXX-YYYY-ZZZZ-1111&#10;XXXX-YYYY-ZZZZ-2222"
             class="w-full mt-1 px-3 py-2 rounded-xl bg-[#14141d] border border-white/10 text-xs font-mono text-[#00f5d4]"
           ></textarea>
         </div>

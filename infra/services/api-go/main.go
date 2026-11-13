@@ -81,9 +81,8 @@ func main() {
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/", s.handleRoot)
 
-	// Auth & Discord OAuth + Role Switcher (for testing & federated login)
+	// Auth & Discord OAuth
 	mux.HandleFunc("/auth/me", s.handleAuthMe)
-	mux.HandleFunc("/auth/dev-switch", s.handleDevSwitch)
 	mux.HandleFunc("/auth/discord/login", s.handleDiscordLogin)
 	mux.HandleFunc("/auth/discord/callback", s.handleDiscordCallback)
 	mux.HandleFunc("/auth/logout", s.handleLogout)
@@ -166,21 +165,6 @@ func (s *Server) verifyToken(token string) (int, bool) {
 }
 
 func (s *Server) currentUser(r *http.Request) *User {
-	// Check X-Demo-Role header or cookie for instant UI workshop testing
-	demoRole := r.Header.Get("X-Demo-Role")
-	if demoRole == "" {
-		if c, err := r.Cookie("tgd_demo_role"); err == nil {
-			demoRole = c.Value
-		}
-	}
-	if demoRole == "og" {
-		return s.getUserByID(1)
-	} else if demoRole == "member" {
-		return s.getUserByID(2)
-	} else if demoRole == "guest" {
-		return nil
-	}
-
 	if c, err := r.Cookie("tgd_session"); err == nil {
 		if uid, ok := s.verifyToken(c.Value); ok {
 			return s.getUserByID(uid)
@@ -240,38 +224,9 @@ func (s *Server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleDevSwitch(w http.ResponseWriter, r *http.Request) {
-	role := r.URL.Query().Get("role")
-	if role == "" {
-		var body struct {
-			Role string `json:"role"`
-		}
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		role = body.Role
-	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     "tgd_demo_role",
-		Value:    role,
-		Path:     "/",
-		HttpOnly: false,
-		MaxAge:   86400 * 7,
-	})
-	var u *User
-	if role == "og" {
-		u = s.getUserByID(1)
-	} else if role == "member" {
-		u = s.getUserByID(2)
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"status": "switched",
-		"role":   role,
-		"user":   u,
-	})
-}
-
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: "tgd_session", Value: "", Path: "/", MaxAge: -1})
-	http.SetCookie(w, &http.Cookie{Name: "tgd_demo_role", Value: "guest", Path: "/", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "tgd_demo_role", Value: "", Path: "/", MaxAge: -1})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_out"})
 }
 
@@ -280,9 +235,7 @@ func (s *Server) handleDiscordLogin(w http.ResponseWriter, r *http.Request) {
 	clientID := os.Getenv("DISCORD_CLIENT_ID")
 	redirectURI := os.Getenv("DISCORD_REDIRECT_URI")
 	if clientID == "" {
-		// Fallback to OG demo login if Discord OAuth credentials aren't set in .env yet
-		http.SetCookie(w, &http.Cookie{Name: "tgd_demo_role", Value: "og", Path: "/", MaxAge: 86400 * 7})
-		http.Redirect(w, r, "/?oauth=demo_og", http.StatusFound)
+		http.Redirect(w, r, "/?error=discord_oauth_not_configured", http.StatusFound)
 		return
 	}
 	u := fmt.Sprintf(
@@ -542,9 +495,10 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Stats summary
-	var totalKeysAvailable, totalEbooks int
+	var totalKeysAvailable, totalEbooks, totalShowcase int
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM trigamedev.keys WHERE claimed_by IS NULL`).Scan(&totalKeysAvailable)
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM trigamedev.ebooks`).Scan(&totalEbooks)
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM trigamedev.showcase`).Scan(&totalShowcase)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"events":   events,
@@ -556,7 +510,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 		"stats": map[string]any{
 			"available_keys": totalKeysAvailable,
 			"total_ebooks":   totalEbooks,
-			"discord_online": 142,
+			"total_showcase": totalShowcase,
 		},
 	})
 }
