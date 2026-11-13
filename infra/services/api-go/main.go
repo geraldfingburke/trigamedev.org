@@ -81,10 +81,11 @@ func main() {
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/", s.handleRoot)
 
-	// Auth & Discord OAuth
+	// Auth & Discord OAuth (supports both /auth/discord/callback and /auth/discort/callback)
 	mux.HandleFunc("/auth/me", s.handleAuthMe)
 	mux.HandleFunc("/auth/discord/login", s.handleDiscordLogin)
 	mux.HandleFunc("/auth/discord/callback", s.handleDiscordCallback)
+	mux.HandleFunc("/auth/discort/callback", s.handleDiscordCallback)
 	mux.HandleFunc("/auth/logout", s.handleLogout)
 
 	// Public Community Hub Endpoints

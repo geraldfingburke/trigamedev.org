@@ -4,6 +4,11 @@
 trigamedev.org, www.trigamedev.org {
 	encode zstd gzip
 
+	# Discord OAuth top-level routes (/auth/discord/* and /auth/discort/*)
+	handle /auth/* {
+		reverse_proxy api-go:8080
+	}
+
 	# Shared Go API (TriGameDev Auth, Key Vault, Ebook Library, CMS)
 	handle_path /api/go/* {
 		reverse_proxy api-go:8080

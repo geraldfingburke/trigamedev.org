@@ -7,6 +7,11 @@
 :80 {
 	encode zstd gzip
 
+	# Discord OAuth top-level routes (/auth/discord/* and /auth/discort/*)
+	handle /auth/* {
+		reverse_proxy api-go:8080
+	}
+
 	# Shared Go API
 	handle_path /api/go/* {
 		reverse_proxy api-go:8080
