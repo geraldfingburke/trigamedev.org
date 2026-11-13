@@ -26,7 +26,7 @@ const tabs = computed(() => [
         <img
           src="/brand/logo-large.png"
           alt="TRIGAMEDEV"
-          class="h-11 sm:h-12 w-auto object-contain bg-black border border-zinc-800 px-2 py-1 group-hover:border-white transition"
+          class="h-11 sm:h-12 w-auto object-contain"
         />
         <div class="hidden sm:block">
           <div class="font-mono text-[11px] uppercase tracking-widest text-zinc-400">

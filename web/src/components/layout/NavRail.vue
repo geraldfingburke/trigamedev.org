@@ -34,7 +34,7 @@ const navItems = computed(() => [
     <!-- Official TriGameDev Brand Seal -->
     <button
       @click="activeSection = 'explore'"
-      class="w-12 h-12 border border-zinc-700 bg-black flex items-center justify-center hover:border-white transition cursor-pointer p-1"
+      class="w-12 h-12 bg-black flex items-center justify-center cursor-pointer"
       title="TriGameDev.org Home"
     >
       <img src="/brand/circle-logo-small.png" alt="TriGameDev Seal" class="w-full h-full object-contain" />

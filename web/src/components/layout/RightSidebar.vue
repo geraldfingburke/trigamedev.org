@@ -74,7 +74,7 @@ const { activeSection, currentUser, overview, logout } = useTriGameDevStore()
         </div>
 
         <div class="bg-[#141417] border border-zinc-800 p-4 flex flex-col gap-4">
-          <a href="https://discord.gg/6jdhMV6sqt" target="_blank" class="block border border-zinc-800 hover:border-white transition">
+          <a href="https://discord.gg/6jdhMV6sqt" target="_blank" class="block">
             <img
               src="/brand/mixtape-logo.png"
               alt="TriGameDev Mixtape Discord QR"
@@ -135,13 +135,10 @@ const { activeSection, currentUser, overview, logout } = useTriGameDevStore()
       </div>
     </div>
 
-    <!-- Bottom Motto Graphic (Una Substantia, Tres Personae + Badge) -->
-    <div class="pt-4 border-t border-zinc-800 flex flex-col items-center gap-3">
-      <img src="/brand/tres.png" alt="Una Substantia, Tres Personae" class="w-full h-auto object-contain" />
-      <div class="w-full flex items-center justify-between font-mono text-[10px] text-zinc-500 uppercase">
-        <span>TRIGAMEDEV.ORG</span>
-        <span>EST. NORTHEAST TN</span>
-      </div>
+    <!-- Bottom Footer -->
+    <div class="pt-4 border-t border-zinc-800 flex items-center justify-between font-mono text-[10px] text-zinc-500 uppercase">
+      <span>TRIGAMEDEV.ORG</span>
+      <span>EST. NORTHEAST TN</span>
     </div>
   </aside>
 </template>

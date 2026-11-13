@@ -26,27 +26,30 @@ const { overview } = useTriGameDevStore()
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div class="bg-[#09090b] border border-zinc-800 p-5 flex flex-col gap-3">
           <h2 class="text-sm font-bold text-white uppercase tracking-wider border-b border-zinc-800 pb-2">
-            Official Rules (48 Hours)
+            The Rules (48 Hours)
           </h2>
-          <ul class="text-xs text-zinc-300 space-y-2 leading-relaxed">
-            <li><strong class="text-white">Solo or Team:</strong> Go solo or build with a team.</li>
-            <li><strong class="text-white">Any Engine or Framework:</strong> All engines and frameworks are allowed.</li>
-            <li><strong class="text-white">Premade Assets Allowed:</strong> Openly available premade assets are allowed if licenses are respected.</li>
-            <li><strong class="text-white">Honor the Theme:</strong> Interpret the theme however you like, but do not submit a pre-made game.</li>
-            <li><strong class="text-[#ef4444]">Strictly No NSFW:</strong> Keep submissions welcoming for the whole community.</li>
+          <ul class="text-xs text-zinc-300 space-y-1.5 leading-relaxed">
+            <li>• NSFW content must be flagged</li>
+            <li>• Your submission must be built during the duration of the jam</li>
+            <li>• You can use any asset you are legally permitted to use</li>
+            <li>• Gen-AI is permitted, lazy Gen-AI is not</li>
+            <li>• No spam submissions, your submission must be unique to this jam</li>
+            <li>• An interpretation of the theme should be incorporated into your submission</li>
+            <li>• An explanation of your interpretation should be included in your submission</li>
+            <li>• Respect yourself, respect your fellow jammers, respect the jam</li>
           </ul>
         </div>
 
         <div class="bg-[#09090b] border border-zinc-800 p-5 flex flex-col gap-3">
           <h2 class="text-sm font-bold text-white uppercase tracking-wider border-b border-zinc-800 pb-2">
-            Ratings Criteria
+            The Ratings
           </h2>
           <ul class="text-xs text-zinc-300 space-y-2 leading-relaxed">
-            <li><strong class="text-white">Theme:</strong> How well does the game adhere to or interpret the theme?</li>
-            <li><strong class="text-white">Engagement:</strong> How well does the game capture attention and keep players engaged?</li>
-            <li><strong class="text-white">Sound:</strong> How fitting and effective are the music and sound effects?</li>
-            <li><strong class="text-white">Art:</strong> How cohesive and appealing is the visual presentation?</li>
-            <li><strong class="text-white">Impression:</strong> Your personal, gut-feeling score for the entry.</li>
+            <li><strong class="text-white">Theme:</strong> How well did the game fit the theme?</li>
+            <li><strong class="text-white">Engagement:</strong> Did it draw you in? Make you want to finish it?</li>
+            <li><strong class="text-white">Sound:</strong> Does the game have good/interesting sound?</li>
+            <li><strong class="text-white">Art:</strong> Does the game look good/interesting/strangeinagoodway?</li>
+            <li><strong class="text-white">Impression:</strong> Does the game stick with you after you finish playing?</li>
           </ul>
         </div>
 
@@ -55,18 +58,15 @@ const { overview } = useTriGameDevStore()
             <h2 class="text-sm font-bold text-white uppercase tracking-wider border-b border-zinc-800 pb-2">
               What Do I Get for Winning?
             </h2>
-            <p class="text-sm font-bold text-[#ef4444] uppercase">
-              Glory! Praise! Admiration!
-            </p>
+            <p class="text-xs text-zinc-300">There are two ways to look at this:</p>
+            <div class="text-xs text-zinc-300 space-y-2">
+              <p><strong class="text-white">1:</strong> Nothing of value</p>
+              <p><strong class="text-white">2:</strong> Bragging rights, a sense of accomplishment, and a cool role on our Discord</p>
+            </div>
             <p class="text-xs text-zinc-400 leading-relaxed">
-              This is a humble community jam meant to encourage creative exploration and experimentation. You get the satisfaction of finishing a build and playing what everyone else made.
+              The two are not mutually exclusive. Make of them what you will.
             </p>
           </div>
-          <img
-            src="/brand/tres.png"
-            alt="Una Substantia, Tres Personae"
-            class="h-6 object-contain object-left opacity-90"
-          />
         </div>
       </div>
     </div>
@@ -102,9 +102,8 @@ const { overview } = useTriGameDevStore()
               </div>
               <h3 class="text-xl font-extrabold text-white uppercase">{{ jam.title }}</h3>
               <div class="text-xs font-mono text-zinc-300 bg-[#09090b] border border-zinc-800 px-3 py-1.5 w-fit">
-                THEME: {{ jam.theme }}
+                THEME: <span class="text-white font-bold">{{ jam.theme }}</span>
               </div>
-              <p class="text-xs text-zinc-400 leading-relaxed whitespace-pre-line">{{ jam.description }}</p>
             </div>
           </div>
 

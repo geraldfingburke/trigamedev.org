@@ -36,7 +36,13 @@ const {
         <div class="flex flex-col gap-3">
           <div class="inline-flex items-center gap-2 px-3 py-1 bg-[#09090b] border border-zinc-700 w-fit text-[11px] font-mono uppercase tracking-widest text-[#ef4444]">
             <Radio class="w-3.5 h-3.5 text-[#ef4444]" />
-            <span>{{ activeJam ? `${activeJam.month_label} // LIVE JAM` : 'NORTHEAST TENNESSEE & BEYOND' }}</span>
+            <span>
+              {{
+                activeJam
+                  ? `${activeJam.month_label} // ${activeJam.status === 'active' ? 'ACTIVE JAM' : 'LATEST JAM'}`
+                  : 'NORTHEAST TENNESSEE & BEYOND'
+              }}
+            </span>
           </div>
 
           <img
@@ -47,9 +53,9 @@ const {
 
           <p class="text-sm sm:text-base text-zinc-300 leading-relaxed max-w-xl">
             <template v-if="activeJam">
-              Active Jam: <strong class="text-white">{{ activeJam.title }}</strong> — Theme:
-              <span class="font-mono font-semibold text-[#ef4444]">{{ activeJam.theme }}</span>.
-              {{ activeJam.description }}
+              {{ activeJam.status === 'active' ? 'Active Jam:' : 'Latest Jam:' }}
+              <strong class="text-white">{{ activeJam.title }}</strong> — Theme:
+              <span class="font-mono font-semibold text-[#ef4444]">{{ activeJam.theme }}</span>
             </template>
             <template v-else>
               A loose collective of game developers that started in the Tri-Cities Region of Northeast Tennessee.
@@ -84,16 +90,11 @@ const {
       </div>
 
       <!-- Right Hero Brand Badge Panel -->
-      <div class="relative z-10 hidden lg:flex flex-col items-center justify-center p-8 border-l border-zinc-800 bg-[#0c0c0f]/90 w-80 shrink-0 gap-4">
+      <div class="relative z-10 hidden lg:flex flex-col items-center justify-center p-8 border-l border-zinc-800 bg-[#0c0c0f]/90 w-80 shrink-0">
         <img
           src="/brand/circle-logo-large.png"
           alt="TriGameDev Badge"
-          class="w-36 h-36 object-contain border border-zinc-800"
-        />
-        <img
-          src="/brand/tres.png"
-          alt="Una Substantia, Tres Personae"
-          class="h-6 object-contain"
+          class="w-40 h-40 object-contain"
         />
       </div>
     </section>

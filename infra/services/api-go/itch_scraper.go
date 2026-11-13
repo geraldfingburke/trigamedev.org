@@ -56,10 +56,9 @@ func extractMetaMap(rawHTML string) map[string]string {
 }
 
 func cleanHTMLText(s string) string {
-	s = strings.ReplaceAll(s, "<br>", "\n")
-	s = strings.ReplaceAll(s, "<br/>", "\n")
-	s = strings.ReplaceAll(s, "<br />", "\n")
-	s = strings.ReplaceAll(s, "</p>", "\n\n")
+	for _, tag := range []string{"<br>", "<br/>", "<br />", "</p>", "</h1>", "</h2>", "</h3>", "</h4>", "</h5>", "</h6>", "</li>", "</div>"} {
+		s = strings.ReplaceAll(s, tag, "\n")
+	}
 	s = reHTMLTags.ReplaceAllString(s, "")
 	s = html.UnescapeString(s)
 	lines := strings.Split(s, "\n")
@@ -125,7 +124,7 @@ func scrapeItchJam(jamURL string) (*ItchScrapedData, error) {
 		URL:          jamURL,
 		SecondaryURL: jamURL,
 		Title:        meta["og:title"],
-		Description:  meta["og:description"],
+		Description:  "",
 		ImageURL:     meta["og:image"],
 		Status:       "active",
 		Tag:          time.Now().Format("January 2006"),
@@ -183,22 +182,34 @@ func scrapeItchJam(jamURL string) (*ItchScrapedData, error) {
 		}
 	}
 
-	// Parse jam body content & look for "Theme:" if present
+	// Parse jam body content to extract the Theme (line immediately following "The Theme")
 	if bm := reJamBody.FindStringSubmatch(rawHTML); len(bm) > 1 {
 		bodyText := cleanHTMLText(bm[1])
 		if bodyText != "" {
-			out.Description = bodyText
 			lines := strings.Split(bodyText, "\n")
+			foundTheme := false
 			for i, line := range lines {
 				low := strings.ToLower(strings.TrimSpace(line))
-				if strings.HasPrefix(low, "theme:") {
-					rest := strings.TrimSpace(line[len("theme:"):])
-					if rest != "" {
-						out.Subtitle = rest
-						break
-					} else if i+1 < len(lines) {
+				if low == "the theme" || low == "theme" {
+					if i+1 < len(lines) {
 						out.Subtitle = strings.TrimSpace(lines[i+1])
+						foundTheme = true
 						break
+					}
+				}
+			}
+			if !foundTheme {
+				for i, line := range lines {
+					low := strings.ToLower(strings.TrimSpace(line))
+					if strings.HasPrefix(low, "theme:") && !strings.Contains(low, "how well") {
+						rest := strings.TrimSpace(line[len("theme:"):])
+						if rest != "" {
+							out.Subtitle = rest
+							break
+						} else if i+1 < len(lines) {
+							out.Subtitle = strings.TrimSpace(lines[i+1])
+							break
+						}
 					}
 				}
 			}
