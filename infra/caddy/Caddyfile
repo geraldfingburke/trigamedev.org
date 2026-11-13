@@ -1,0 +1,29 @@
+# Global Caddy configuration
+{
+	# Automatic HTTPS is enabled by default for domain blocks.
+}
+
+# Default HTTP listener (works immediately via IP 129.121.165.252 while domains transfer)
+:80 {
+	encode zstd gzip
+
+	# Shared Go API
+	handle_path /api/go/* {
+		reverse_proxy api-go:8080
+	}
+
+	# Shared FastAPI (Python)
+	handle_path /api/py/* {
+		reverse_proxy api-fastapi:8000
+	}
+
+	# Default landing / status page & TriGameDev SPA
+	handle {
+		root * /srv/sites/default
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# Import all per-domain site configs once domains finish transferring
+import /etc/caddy/sites/*.caddy

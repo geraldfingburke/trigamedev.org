@@ -1,0 +1,118 @@
+# Shared VPS Infrastructure Stack
+# 2 vCPU / 4 GB DDR5 RAM / 100 GB NVMe
+
+name: vps-infra
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: infra-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/sites:/etc/caddy/sites:ro
+      - ./sites:/srv/sites:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - web_net
+    deploy:
+      resources:
+        limits:
+          memory: 150M
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: infra-postgres
+    restart: unless-stopped
+    security_opt:
+      - apparmor=unconfined
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-main}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "effective_cache_size=768MB"
+      - "-c"
+      - "work_mem=4MB"
+      - "-c"
+      - "maintenance_work_mem=64MB"
+      - "-c"
+      - "max_connections=100"
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  api-go:
+    build:
+      context: ./services/api-go
+      dockerfile: Dockerfile
+    container_name: infra-api-go
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-main}?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - web_net
+      - backend_net
+    deploy:
+      resources:
+        limits:
+          memory: 150M
+
+  api-fastapi:
+    build:
+      context: ./services/api-fastapi
+      dockerfile: Dockerfile
+    container_name: infra-api-fastapi
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-main}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - web_net
+      - backend_net
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+
+networks:
+  web_net:
+    name: web_net
+    driver: bridge
+  backend_net:
+    name: backend_net
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
+  pg_data:

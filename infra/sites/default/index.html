@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VPS Shared Infrastructure Status</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --ok: #4ade80;
+    }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 2rem;
+      max-width: 900px;
+      margin-inline: auto;
+    }
+    h1 { margin-bottom: 0.25rem; }
+    p.sub { color: var(--muted); margin-top: 0; margin-bottom: 2rem; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid #334155;
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      background: #064e3b;
+      color: var(--ok);
+    }
+    pre {
+      background: #090d16;
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+      overflow-x: auto;
+      font-size: 0.8rem;
+      color: #cbd5e1;
+    }
+  </style>
+</head>
+<body>
+  <h1>VPS Core Infrastructure</h1>
+  <p class="sub">129.121.165.252 &bull; Caddy + PostgreSQL 17 + Go + FastAPI</p>
+  <div class="grid">
+    <div class="card">
+      <h3>Go Backend (<code>/api/go/health</code>)</h3>
+      <span id="go-badge" class="badge">Checking...</span>
+      <pre id="go-out">Loading...</pre>
+    </div>
+    <div class="card">
+      <h3>FastAPI Backend (<code>/api/py/health</code>)</h3>
+      <span id="py-badge" class="badge">Checking...</span>
+      <pre id="py-out">Loading...</pre>
+    </div>
+  </div>
+  <script>
+    async function check(url, badgeId, outId) {
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        document.getElementById(badgeId).textContent = data.status === 'ok' ? 'ONLINE' : 'DEGRADED';
+        document.getElementById(outId).textContent = JSON.stringify(data, null, 2);
+      } catch (e) {
+        document.getElementById(badgeId).textContent = 'OFFLINE';
+        document.getElementById(outId).textContent = String(e);
+      }
+    }
+    check('/api/go/health', 'go-badge', 'go-out');
+    check('/api/py/health', 'py-badge', 'py-out');
+  </script>
+</body>
+</html>

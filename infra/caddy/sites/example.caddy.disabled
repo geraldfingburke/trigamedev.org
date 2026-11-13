@@ -1,0 +1,19 @@
+# Example domain configuration (Uncomment when domain DNS points to 129.121.165.252)
+#
+# trigamedev.org, www.trigamedev.org {
+#     encode zstd gzip
+#
+#     handle_path /api/go/* {
+#         reverse_proxy api-go:8080
+#     }
+#
+#     handle_path /api/py/* {
+#         reverse_proxy api-fastapi:8000
+#     }
+#
+#     handle {
+#         root * /srv/sites/trigamedev.org
+#         try_files {path} /index.html
+#         file_server
+#     }
+# }
