@@ -49,39 +49,41 @@ jobs:
           go mod tidy
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o server .
 
-      - name: Configure SSH
+      - name: Package Release Bundle
+        run: |
+          mkdir -p bundle/infra/caddy/sites bundle/infra/postgres/init bundle/infra/scripts bundle/infra/services/api-go bundle/site
+          cp infra/docker-compose.yml bundle/infra/docker-compose.yml
+          cp infra/caddy/Caddyfile bundle/infra/caddy/Caddyfile
+          cp infra/caddy/sites/* bundle/infra/caddy/sites/
+          cp infra/postgres/init/*.sql bundle/infra/postgres/init/
+          cp infra/scripts/*.sh bundle/infra/scripts/
+          cp infra/services/api-go/* bundle/infra/services/api-go/
+          cp -r web/dist/* bundle/site/
+          tar -czf release.tar.gz -C bundle .
+
+      - name: Deploy Bundle & Verify Health over Single SSH Connection
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/vps_key
           chmod 600 ~/.ssh/vps_key
-          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Sync Artifacts & Infrastructure Configs to VPS
-        run: |
-          # Sync compose, Caddy, scripts, Postgres init, and FastAPI service files
-          scp -i ~/.ssh/vps_key infra/docker-compose.yml root@${{ secrets.VPS_HOST }}:/opt/infra/docker-compose.yml
-          scp -i ~/.ssh/vps_key infra/caddy/Caddyfile root@${{ secrets.VPS_HOST }}:/opt/infra/caddy/Caddyfile
-          scp -i ~/.ssh/vps_key infra/caddy/sites/* root@${{ secrets.VPS_HOST }}:/opt/infra/caddy/sites/
-          scp -i ~/.ssh/vps_key infra/postgres/init/*.sql root@${{ secrets.VPS_HOST }}:/opt/infra/postgres/init/
-          scp -i ~/.ssh/vps_key infra/scripts/*.sh root@${{ secrets.VPS_HOST }}:/opt/infra/scripts/
-          scp -i ~/.ssh/vps_key infra/services/api-go/* root@${{ secrets.VPS_HOST }}:/opt/infra/services/api-go/
-
-          # Sync compiled Vue SPA assets to both default and trigamedev.org web roots
-          ssh -i ~/.ssh/vps_key root@${{ secrets.VPS_HOST }} "mkdir -p /opt/infra/sites/trigamedev.org /opt/infra/sites/default"
-          scp -i ~/.ssh/vps_key -r web/dist/* root@${{ secrets.VPS_HOST }}:/opt/infra/sites/trigamedev.org/
-          scp -i ~/.ssh/vps_key -r web/dist/* root@${{ secrets.VPS_HOST }}:/opt/infra/sites/default/
-
-      - name: Restart Services & Verify Health on VPS
-        run: |
-          ssh -i ~/.ssh/vps_key root@${{ secrets.VPS_HOST }} << 'EOF'
+          cat release.tar.gz | ssh -i ~/.ssh/vps_key -o StrictHostKeyChecking=accept-new root@${{ secrets.VPS_HOST }} '
             set -e
+            TMP_DIR=$(mktemp -d)
+            tar -xzf - -C "${TMP_DIR}"
+
+            # Sync infrastructure configs & pre-compiled Go binary
+            cp -r "${TMP_DIR}/infra/"* /opt/infra/
             chmod +x /opt/infra/scripts/*.sh
+
+            # Sync compiled Vue SPA assets to both default and trigamedev.org web roots
+            mkdir -p /opt/infra/sites/trigamedev.org /opt/infra/sites/default
+            cp -r "${TMP_DIR}/site/"* /opt/infra/sites/trigamedev.org/
+            cp -r "${TMP_DIR}/site/"* /opt/infra/sites/default/
+            rm -rf "${TMP_DIR}"
+
             cd /opt/infra
-
-            # Apply any new idempotent schema migrations
             docker exec -i infra-postgres psql -U postgres -d main < /opt/infra/postgres/init/02-trigamedev.sql
-
-            # Rebuild lightweight runtime container using pre-built binary & reload Caddy
             docker compose up -d --build api-go
             docker exec infra-caddy caddy reload --config /etc/caddy/Caddyfile
 
@@ -89,4 +91,4 @@ jobs:
             curl -sf http://127.0.0.1/api/go/health
             echo ""
             echo "Deployment complete!"
-          EOF
+          '
