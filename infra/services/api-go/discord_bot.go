@@ -392,6 +392,31 @@ func (s *Server) announceEntryByID(section string, id int) error {
 	return fmt.Errorf("unknown section: %s", section)
 }
 
+// Returns true if there are still unannounced entries in the 6-hour catch-up queue
+func (s *Server) hasUnannouncedEntries() bool {
+	var count int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM (
+			SELECT id FROM trigamedev.game_jams WHERE COALESCE(discord_announced, FALSE) = FALSE
+			UNION ALL
+			SELECT id FROM trigamedev.events WHERE COALESCE(discord_announced, FALSE) = FALSE AND start_time >= NOW()
+			UNION ALL
+			SELECT id FROM trigamedev.news WHERE COALESCE(discord_announced, FALSE) = FALSE
+			UNION ALL
+			SELECT id FROM trigamedev.showcase WHERE COALESCE(discord_announced, FALSE) = FALSE
+			UNION ALL
+			SELECT id FROM trigamedev.gallery WHERE COALESCE(discord_announced, FALSE) = FALSE
+			UNION ALL
+			SELECT id FROM trigamedev.videos WHERE COALESCE(discord_announced, FALSE) = FALSE
+			UNION ALL
+			SELECT id FROM trigamedev.key_pools WHERE COALESCE(discord_announced, FALSE) = FALSE
+			UNION ALL
+			SELECT id FROM trigamedev.ebooks WHERE COALESCE(discord_announced, FALSE) = FALSE
+		) q
+	`).Scan(&count)
+	return err == nil && count > 0
+}
+
 // Pick 1 unannounced entry across the entire database and post it to Discord
 func (s *Server) processSingleCatchupPost(force bool) (string, int, error) {
 	if !force {
