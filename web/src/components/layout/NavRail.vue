@@ -37,19 +37,19 @@ const navItems = computed(() => {
 
 <template>
   <aside
-    class="bg-[#09090b] border-b lg:border-b-0 lg:border-r border-zinc-800 flex lg:flex-col items-center justify-between px-3 py-3 lg:py-6 gap-2"
+    class="sticky top-0 z-30 lg:h-screen lg:self-start bg-[#09090b] border-b lg:border-b-0 lg:border-r border-zinc-800 flex lg:flex-col items-center justify-between px-3 py-3 lg:py-6 gap-2"
   >
     <!-- Official TriGameDev Brand Seal (No border) -->
     <button
       @click="activeSection = 'explore'"
-      class="w-12 h-12 bg-black flex items-center justify-center cursor-pointer"
+      class="w-12 h-12 bg-black flex items-center justify-center cursor-pointer shrink-0"
       title="TriGameDev.org Home"
     >
       <img src="/brand/circle-logo-small.png" alt="TriGameDev Seal" class="w-full h-full object-contain" />
     </button>
 
     <!-- Primary Icon Rail with Per-User Unread Notifications -->
-    <nav class="flex lg:flex-col items-center gap-1.5 overflow-x-auto">
+    <nav class="flex lg:flex-col items-center gap-1.5 overflow-x-auto lg:overflow-visible py-1.5 px-1.5">
       <button
         v-for="item in navItems"
         :key="item.id"
