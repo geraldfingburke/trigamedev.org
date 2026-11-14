@@ -1,7 +1,7 @@
 <script setup>
 import { useTriGameDevStore } from '../../composables/useTriGameDevStore'
 
-const { overview, selectedLightbox } = useTriGameDevStore()
+const { overview, selectedLightbox, activeSlug, slugify } = useTriGameDevStore()
 </script>
 
 <template>
@@ -21,8 +21,14 @@ const { overview, selectedLightbox } = useTriGameDevStore()
         <div
           v-for="img in overview.gallery"
           :key="img.id"
+          :id="'slug-' + (img.slug || slugify(img.title))"
           @click="selectedLightbox = img"
-          class="group overflow-hidden bg-[#121215] border border-zinc-800 hover:border-white cursor-pointer transition"
+          class="group overflow-hidden bg-[#121215] border hover:border-white cursor-pointer transition"
+          :class="
+            (img.slug || slugify(img.title)) === activeSlug
+              ? 'border-[#ef4444] ring-1 ring-[#ef4444]'
+              : 'border-zinc-800'
+          "
         >
           <img :src="img.image_url" class="h-44 w-full object-cover border-b border-zinc-800 bg-black" />
           <div class="p-3">
@@ -48,9 +54,15 @@ const { overview, selectedLightbox } = useTriGameDevStore()
         <a
           v-for="vid in overview.videos"
           :key="vid.id"
+          :id="'slug-' + (vid.slug || slugify(vid.title))"
           :href="vid.video_url"
           target="_blank"
-          class="bg-[#121215] border border-zinc-800 hover:border-white transition flex flex-col sm:flex-row"
+          class="bg-[#121215] border hover:border-white transition flex flex-col sm:flex-row"
+          :class="
+            (vid.slug || slugify(vid.title)) === activeSlug
+              ? 'border-[#ef4444] ring-1 ring-[#ef4444]'
+              : 'border-zinc-800'
+          "
         >
           <div class="relative w-full sm:w-48 h-36 border-b sm:border-b-0 sm:border-r border-zinc-800 bg-black shrink-0">
             <img :src="vid.thumbnail_url || '/brand/filler.png'" class="w-full h-full object-cover" />

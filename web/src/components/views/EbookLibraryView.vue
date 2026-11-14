@@ -4,7 +4,15 @@ import { BookOpen, Plus, Download, Trash2, ChevronDown, ChevronRight } from 'luc
 import { useTriGameDevStore } from '../../composables/useTriGameDevStore'
 import { useEbookLibrary } from '../../composables/useEbookLibrary'
 
-const { currentUser, filteredEbooks, searchQuery, showUploadEbookModal } = useTriGameDevStore()
+const {
+  currentUser,
+  filteredEbooks,
+  searchQuery,
+  showUploadEbookModal,
+  activeSlug,
+  slugify,
+  navigateTo
+} = useTriGameDevStore()
 const { downloadEbook, deleteEbook } = useEbookLibrary()
 
 const openCategories = ref({})
@@ -29,6 +37,12 @@ const groupedEbooks = computed(() => {
 function isCategoryOpen(key) {
   if (searchQuery.value.trim()) {
     return openCategories.value[key] !== false
+  }
+  if (activeSlug.value) {
+    const group = groupedEbooks.value.find(g => g.key === key)
+    if (group?.books.some(b => (b.slug || slugify(b.title)) === activeSlug.value)) {
+      return openCategories.value[key] !== false
+    }
   }
   return !!openCategories.value[key]
 }
@@ -135,7 +149,13 @@ function toggleAllCategories() {
           <div
             v-for="book in group.books"
             :key="book.id"
-            class="bg-[#09090b] p-4 border border-zinc-800 flex flex-col sm:flex-row gap-4 justify-between"
+            :id="'slug-' + (book.slug || slugify(book.title))"
+            class="bg-[#09090b] p-4 border flex flex-col sm:flex-row gap-4 justify-between transition"
+            :class="
+              (book.slug || slugify(book.title)) === activeSlug
+                ? 'border-[#ef4444] ring-1 ring-[#ef4444]'
+                : 'border-zinc-800'
+            "
           >
             <img
               :src="book.cover_image_url || '/brand/filler.png'"
@@ -152,7 +172,12 @@ function toggleAllCategories() {
                     {{ book.file_format }} {{ book.file_size_label ? `// ${book.file_size_label}` : '' }}
                   </span>
                 </div>
-                <h3 class="font-bold text-base text-white uppercase mt-1.5">{{ book.title }}</h3>
+                <h3
+                  @click="navigateTo('library', book.slug || slugify(book.title))"
+                  class="font-bold text-base text-white hover:text-[#ef4444] uppercase mt-1.5 cursor-pointer transition"
+                >
+                  {{ book.title }}
+                </h3>
                 <p class="text-xs font-mono text-zinc-400">BY {{ book.author }}</p>
                 <p class="text-xs text-zinc-400 mt-1.5 line-clamp-2">{{ book.description }}</p>
               </div>

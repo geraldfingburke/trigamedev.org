@@ -822,7 +822,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 			var st time.Time
 			if err := eRows.Scan(&id, &title, &desc, &loc, &st, &img, &tag, &rsvp, &createdBy); err == nil {
 				events = append(events, map[string]any{
-					"id": id, "title": title, "description": desc, "location": loc,
+					"id": id, "slug": slugify(title), "title": title, "description": desc, "location": loc,
 					"start_time": st.Format(time.RFC3339), "cover_image_url": img, "tag": tag, "rsvp_count": rsvp,
 					"created_by": createdBy,
 				})
@@ -845,7 +845,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 			var pub time.Time
 			if err := nRows.Scan(&id, &title, &summary, &body, &author, &role, &tag, &pinned, &pub, &createdBy); err == nil {
 				news = append(news, map[string]any{
-					"id": id, "title": title, "summary": summary, "body_markdown": body,
+					"id": id, "slug": slugify(title), "title": title, "summary": summary, "body_markdown": body,
 					"author_name": author, "author_role": role, "tag": tag, "is_pinned": pinned,
 					"published_at": pub.Format("Jan 02, 2006"), "created_by": createdBy,
 				})
@@ -872,7 +872,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 					winners = []ItchJamWinner{}
 				}
 				jams = append(jams, map[string]any{
-					"id": id, "title": title, "month_label": month, "theme": theme,
+					"id": id, "slug": slugify(title), "title": title, "month_label": month, "theme": theme,
 					"description": desc, "itch_url": itch, "cover_image_url": img,
 					"start_date": sd.Format(time.RFC3339), "end_date": ed.Format(time.RFC3339),
 					"status": status, "participants_count": parts, "submissions_count": subs,
@@ -903,7 +903,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				showcase = append(showcase, map[string]any{
-					"id": id, "title": title, "developer_name": dev, "description": desc,
+					"id": id, "slug": slugify(title), "title": title, "developer_name": dev, "description": desc,
 					"thumbnail_url": thumb, "play_url": play, "source_url": src,
 					"engine": engine, "views_count": views, "featured": feat,
 					"created_by": createdBy, "action_label": actionLabel,
@@ -925,7 +925,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 			var title, cap, img, ev, up string
 			if err := gRows.Scan(&id, &title, &cap, &img, &ev, &up, &createdBy); err == nil {
 				gallery = append(gallery, map[string]any{
-					"id": id, "title": title, "caption": cap, "image_url": img,
+					"id": id, "slug": slugify(title), "title": title, "caption": cap, "image_url": img,
 					"event_label": ev, "uploaded_by": up, "created_by": createdBy,
 				})
 			}
@@ -945,7 +945,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 			var title, desc, vurl, thumb, spk, dur string
 			if err := vRows.Scan(&id, &title, &desc, &vurl, &thumb, &spk, &dur, &createdBy); err == nil {
 				videos = append(videos, map[string]any{
-					"id": id, "title": title, "description": desc, "video_url": vurl,
+					"id": id, "slug": slugify(title), "title": title, "description": desc, "video_url": vurl,
 					"thumbnail_url": thumb, "speaker_name": spk, "duration": dur, "created_by": createdBy,
 				})
 			}
@@ -1020,6 +1020,7 @@ func (s *Server) handleKeyPools(w http.ResponseWriter, r *http.Request) {
 				canDelete := u != nil && (u.IsOGAdmin || (createdBy > 0 && createdBy == u.ID) || strings.EqualFold(donor, u.DisplayName))
 				pools = append(pools, map[string]any{
 					"id":              id,
+					"slug":            slugify(title),
 					"title":           title,
 					"platform":        platform,
 					"store_url":       store,
@@ -1299,6 +1300,7 @@ func (s *Server) handleEbooks(w http.ResponseWriter, r *http.Request) {
 				canDelete := u != nil && (u.IsOGAdmin || (uploadedBy > 0 && uploadedBy == u.ID) || strings.EqualFold(upBy, u.DisplayName))
 				ebooks = append(ebooks, map[string]any{
 					"id":               id,
+					"slug":             slugify(title),
 					"title":            title,
 					"author":           author,
 					"category":         cat,

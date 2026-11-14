@@ -2,7 +2,7 @@
 import { MapPin, Calendar } from 'lucide-vue-next'
 import { useTriGameDevStore } from '../../composables/useTriGameDevStore'
 
-const { upcomingEvents, pastEvents } = useTriGameDevStore()
+const { upcomingEvents, pastEvents, activeSlug, slugify, navigateTo } = useTriGameDevStore()
 
 function formatEventDateTime(iso) {
   if (!iso) return ''
@@ -40,7 +40,13 @@ function formatEventDateTime(iso) {
         <div
           v-for="ev in upcomingEvents"
           :key="'up-' + ev.id"
-          class="bg-[#121215] border border-zinc-800 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+          :id="'slug-' + (ev.slug || slugify(ev.title))"
+          class="bg-[#121215] border p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition"
+          :class="
+            (ev.slug || slugify(ev.title)) === activeSlug
+              ? 'border-[#ef4444] ring-1 ring-[#ef4444]'
+              : 'border-zinc-800'
+          "
         >
           <div class="flex items-start gap-4">
             <img
@@ -55,7 +61,12 @@ function formatEventDateTime(iso) {
                   {{ formatEventDateTime(ev.start_time) }}
                 </span>
               </div>
-              <h3 class="font-bold text-base text-white uppercase mt-1">{{ ev.title }}</h3>
+              <h3
+                @click="navigateTo('events', ev.slug || slugify(ev.title))"
+                class="font-bold text-base text-white hover:text-[#ef4444] uppercase mt-1 cursor-pointer transition"
+              >
+                {{ ev.title }}
+              </h3>
               <p class="text-xs text-zinc-400 mt-0.5">{{ ev.description }}</p>
             </div>
           </div>

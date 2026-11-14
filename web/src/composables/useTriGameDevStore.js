@@ -1,6 +1,108 @@
 import { ref, computed, watch } from 'vue'
 
-// Capture token from OAuth redirect query params if present
+export function slugify(raw) {
+  return (
+    String(raw || '')
+      .toLowerCase()
+      .trim()
+      .replace(/['\u2019]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'post'
+  )
+}
+
+const sectionFromPathSegment = {
+  '': 'explore',
+  explore: 'explore',
+  jams: 'jams',
+  events: 'events',
+  news: 'news',
+  announcements: 'news',
+  games: 'showcase',
+  showcase: 'showcase',
+  media: 'media',
+  gallery: 'media',
+  videos: 'media',
+  keys: 'keys',
+  library: 'library',
+  ebooks: 'library',
+  cms: 'cms'
+}
+
+const pathSegmentFromSection = {
+  explore: '',
+  jams: 'jams',
+  events: 'events',
+  news: 'news',
+  showcase: 'games',
+  media: 'media',
+  keys: 'keys',
+  library: 'library',
+  cms: 'cms'
+}
+
+// Singleton reactive state shared across all components & composables
+const activeSection = ref('explore') // explore, events, news, jams, showcase, media, keys, library, cms
+const activeSlug = ref('')
+let suppressUrlPush = false
+
+function parseCurrentPath() {
+  if (typeof window === 'undefined') return { section: 'explore', slug: '' }
+  const parts = window.location.pathname
+    .split('/')
+    .map(p => p.trim().toLowerCase())
+    .filter(Boolean)
+  const seg1 = parts[0] || ''
+  const sec = sectionFromPathSegment[seg1] || 'explore'
+  const slug = parts[1] ? decodeURIComponent(parts[1]) : ''
+  return { section: sec, slug }
+}
+
+function buildPathForRoute(section, slug = '') {
+  const base = pathSegmentFromSection[section] ?? ''
+  if (!base) return '/'
+  if (slug) return `/${base}/${encodeURIComponent(slug)}`
+  return `/${base}`
+}
+
+function scrollToActiveSlug() {
+  if (typeof window === 'undefined' || !activeSlug.value) return
+  setTimeout(() => {
+    const el = document.getElementById(`slug-${activeSlug.value}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, 120)
+}
+
+function syncRouteFromLocation() {
+  const { section, slug } = parseCurrentPath()
+  suppressUrlPush = true
+  activeSection.value = section
+  activeSlug.value = slug
+  suppressUrlPush = false
+  if (slug) {
+    scrollToActiveSlug()
+  }
+}
+
+function navigateTo(section, slug = '') {
+  suppressUrlPush = true
+  activeSection.value = section
+  activeSlug.value = slug ? slugify(slug) : ''
+  suppressUrlPush = false
+  if (typeof window !== 'undefined') {
+    const targetPath = buildPathForRoute(activeSection.value, activeSlug.value)
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath)
+    }
+  }
+  if (activeSlug.value) {
+    scrollToActiveSlug()
+  }
+}
+
+// Capture token from OAuth redirect query params if present, and initialize route from URL path
 if (typeof window !== 'undefined') {
   const params = new URLSearchParams(window.location.search)
   const tok = params.get('auth_token')
@@ -16,10 +118,9 @@ if (typeof window !== 'undefined') {
     const clean = params.toString()
     window.history.replaceState({}, '', window.location.pathname + (clean ? `?${clean}` : ''))
   }
+  syncRouteFromLocation()
+  window.addEventListener('popstate', syncRouteFromLocation)
 }
-
-// Singleton reactive state shared across all components & composables
-const activeSection = ref('explore') // explore, events, news, jams, showcase, media, keys, library, cms
 const keySubTab = ref('pools') // pools, my-keys
 const searchQuery = ref('')
 const loading = ref(true)
@@ -121,7 +222,16 @@ async function markSectionAsRead(sec) {
   }
 }
 
-watch(activeSection, newSec => {
+watch(activeSection, (newSec, oldSec) => {
+  if (!suppressUrlPush && newSec !== oldSec) {
+    activeSlug.value = ''
+    if (typeof window !== 'undefined') {
+      const targetPath = buildPathForRoute(newSec, '')
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState({}, '', targetPath)
+      }
+    }
+  }
   markSectionAsRead(newSec)
 })
 
@@ -137,7 +247,7 @@ async function loadAllData() {
     ])
     currentUser.value = authData.user
     discordConfigured.value = authData.discord_configured
-    if (!currentUser.value && ['keys', 'library', 'cms'].includes(activeSection.value)) {
+    if (!currentUser.value && ['keys', 'library', 'cms'].includes(activeSection.value) && !activeSlug.value) {
       activeSection.value = 'explore'
     }
     overview.value = {
@@ -148,6 +258,9 @@ async function loadAllData() {
     keyPools.value = poolsData.pools || []
     myKeys.value = myKeysData.claimed_keys || []
     ebooks.value = ebooksData.ebooks || []
+    if (activeSlug.value) {
+      scrollToActiveSlug()
+    }
   } catch (e) {
     showToast(`Notice: ${e.message}`)
   } finally {
@@ -196,13 +309,22 @@ const nextEvent = computed(() => upcomingEvents.value[0] || overview.value.event
 
 const filteredShowcase = computed(() => {
   const q = searchQuery.value.toLowerCase().trim()
-  if (!q) return overview.value.showcase || []
-  return (overview.value.showcase || []).filter(
-    g =>
-      g.title.toLowerCase().includes(q) ||
-      g.developer_name.toLowerCase().includes(q) ||
-      g.engine.toLowerCase().includes(q)
-  )
+  const base = !q
+    ? [...(overview.value.showcase || [])]
+    : (overview.value.showcase || []).filter(
+        g =>
+          g.title.toLowerCase().includes(q) ||
+          g.developer_name.toLowerCase().includes(q) ||
+          g.engine.toLowerCase().includes(q)
+      )
+  if (activeSlug.value) {
+    base.sort((a, b) => {
+      const aMatch = (a.slug || slugify(a.title)) === activeSlug.value ? -1 : 0
+      const bMatch = (b.slug || slugify(b.title)) === activeSlug.value ? -1 : 0
+      return aMatch - bMatch
+    })
+  }
+  return base
 })
 
 const filteredKeyPools = computed(() => {
@@ -231,6 +353,7 @@ export function useTriGameDevStore() {
   return {
     // State
     activeSection,
+    activeSlug,
     keySubTab,
     searchQuery,
     loading,
@@ -257,6 +380,8 @@ export function useTriGameDevStore() {
     filteredKeyPools,
     filteredEbooks,
     // Actions
+    slugify,
+    navigateTo,
     showToast,
     loginWithDiscord,
     apiFetch,

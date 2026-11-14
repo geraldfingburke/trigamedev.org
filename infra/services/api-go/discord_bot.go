@@ -8,9 +8,24 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
+
+var reNonAlphaNum = regexp.MustCompile(`[^a-z0-9]+`)
+
+func slugify(raw string) string {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	s = strings.ReplaceAll(s, "'", "")
+	s = strings.ReplaceAll(s, "\u2019", "")
+	s = reNonAlphaNum.ReplaceAllString(s, "-")
+	s = strings.Trim(s, "-")
+	if s == "" {
+		return "post"
+	}
+	return s
+}
 
 // Default Discord channel IDs in the TriGameDev Guild (336559457242972160)
 var defaultSectionChannels = map[string]string{
@@ -131,24 +146,25 @@ func (s *Server) announceEntryByID(section string, id int) error {
 		if err != nil {
 			return err
 		}
-		link := itchURL
-		if link == "" {
-			link = "https://trigamedev.org"
+		siteURL := fmt.Sprintf("https://trigamedev.org/jams/%s", slugify(title))
+		fields := []discordEmbedField{
+			{Name: "Jammers", Value: fmt.Sprintf("%d", parts), Inline: true},
+			{Name: "Entries", Value: fmt.Sprintf("%d", subs), Inline: true},
+			{Name: "View on TriGameDev", Value: siteURL, Inline: false},
+		}
+		if itchURL != "" {
+			fields = append(fields, discordEmbedField{Name: "Itch.io Jam Page", Value: itchURL, Inline: false})
 		}
 		emb := &discordEmbed{
 			Title:       title,
-			URL:         link,
+			URL:         siteURL,
 			Description: fmt.Sprintf("**Theme:** %s\n**Month:** %s", theme, monthLabel),
-			Fields: []discordEmbedField{
-				{Name: "Jammers", Value: fmt.Sprintf("%d", parts), Inline: true},
-				{Name: "Entries", Value: fmt.Sprintf("%d", subs), Inline: true},
-				{Name: "Browse Jams", Value: "https://trigamedev.org", Inline: false},
-			},
+			Fields:      fields,
 		}
 		if img := resolvePublicURL(coverURL); img != "" {
 			emb.Image = &discordEmbedMedia{URL: img}
 		}
-		if err := s.postToDiscordChannel("jams", fmt.Sprintf("@here **%s** is on TriGameDev.org!", title), emb); err != nil {
+		if err := s.postToDiscordChannel("jams", fmt.Sprintf("@here **%s** is on TriGameDev.org!\n%s", title, siteURL), emb); err != nil {
 			return err
 		}
 		_, _ = s.db.Exec(`UPDATE trigamedev.game_jams SET discord_announced = TRUE WHERE id = $1`, id)
@@ -164,19 +180,21 @@ func (s *Server) announceEntryByID(section string, id int) error {
 		if err != nil {
 			return err
 		}
+		siteURL := fmt.Sprintf("https://trigamedev.org/events/%s", slugify(title))
 		emb := &discordEmbed{
 			Title:       title,
-			URL:         "https://trigamedev.org",
+			URL:         siteURL,
 			Description: desc,
 			Fields: []discordEmbedField{
 				{Name: "When", Value: st.Local().Format("Mon, Jan 02, 2006 3:04 PM"), Inline: true},
 				{Name: "Location", Value: loc, Inline: true},
+				{Name: "Event Link", Value: siteURL, Inline: false},
 			},
 		}
 		if img := resolvePublicURL(coverURL); img != "" {
 			emb.Image = &discordEmbedMedia{URL: img}
 		}
-		if err := s.postToDiscordChannel("events", fmt.Sprintf("@here Upcoming Event: **%s**", title), emb); err != nil {
+		if err := s.postToDiscordChannel("events", fmt.Sprintf("@here Upcoming Event: **%s**\n%s", title, siteURL), emb); err != nil {
 			return err
 		}
 		_, _ = s.db.Exec(`UPDATE trigamedev.events SET discord_announced = TRUE WHERE id = $1`, id)
@@ -191,20 +209,22 @@ func (s *Server) announceEntryByID(section string, id int) error {
 		if err != nil {
 			return err
 		}
+		siteURL := fmt.Sprintf("https://trigamedev.org/news/%s", slugify(title))
 		desc := body
 		if strings.TrimSpace(summary) != "" && summary != body {
 			desc = fmt.Sprintf("**%s**\n\n%s", summary, body)
 		}
 		emb := &discordEmbed{
 			Title:       title,
-			URL:         "https://trigamedev.org",
+			URL:         siteURL,
 			Description: desc,
 			Fields: []discordEmbedField{
 				{Name: "Posted By", Value: author, Inline: true},
 				{Name: "Tag", Value: tag, Inline: true},
+				{Name: "Read on TriGameDev", Value: siteURL, Inline: false},
 			},
 		}
-		if err := s.postToDiscordChannel("news", fmt.Sprintf("@here New Announcement: **%s**", title), emb); err != nil {
+		if err := s.postToDiscordChannel("news", fmt.Sprintf("@here New Announcement: **%s**\n%s", title, siteURL), emb); err != nil {
 			return err
 		}
 		_, _ = s.db.Exec(`UPDATE trigamedev.news SET discord_announced = TRUE WHERE id = $1`, id)
@@ -219,6 +239,7 @@ func (s *Server) announceEntryByID(section string, id int) error {
 		if err != nil {
 			return err
 		}
+		siteURL := fmt.Sprintf("https://trigamedev.org/games/%s", slugify(title))
 		if actionLabel == "" {
 			if strings.Contains(strings.ToLower(playURL), "steampowered.com") {
 				actionLabel = "Buy on Steam"
@@ -228,18 +249,19 @@ func (s *Server) announceEntryByID(section string, id int) error {
 		}
 		emb := &discordEmbed{
 			Title:       title,
-			URL:         playURL,
+			URL:         siteURL,
 			Description: desc,
 			Fields: []discordEmbedField{
 				{Name: "Developer", Value: dev, Inline: true},
 				{Name: "Tag / Engine", Value: engine, Inline: true},
+				{Name: "View on TriGameDev", Value: siteURL, Inline: false},
 				{Name: actionLabel, Value: playURL, Inline: false},
 			},
 		}
 		if img := resolvePublicURL(thumb); img != "" {
 			emb.Image = &discordEmbedMedia{URL: img}
 		}
-		if err := s.postToDiscordChannel("showcase", fmt.Sprintf("@here Check out **%s** by **%s** on Games by Our People!", title, dev), emb); err != nil {
+		if err := s.postToDiscordChannel("showcase", fmt.Sprintf("@here Check out **%s** by **%s** on Games by Our People!\n%s", title, dev, siteURL), emb); err != nil {
 			return err
 		}
 		_, _ = s.db.Exec(`UPDATE trigamedev.showcase SET discord_announced = TRUE WHERE id = $1`, id)
@@ -254,19 +276,21 @@ func (s *Server) announceEntryByID(section string, id int) error {
 		if err != nil {
 			return err
 		}
+		siteURL := fmt.Sprintf("https://trigamedev.org/media/%s", slugify(title))
 		emb := &discordEmbed{
 			Title:       title,
-			URL:         "https://trigamedev.org",
+			URL:         siteURL,
 			Description: caption,
 			Fields: []discordEmbedField{
 				{Name: "Album", Value: evLabel, Inline: true},
 				{Name: "Shared By", Value: uploadedBy, Inline: true},
+				{Name: "View on TriGameDev", Value: siteURL, Inline: false},
 			},
 		}
 		if img := resolvePublicURL(imgURL); img != "" {
 			emb.Image = &discordEmbedMedia{URL: img}
 		}
-		if err := s.postToDiscordChannel("gallery", fmt.Sprintf("@here New photo added to the TriGameDev Gallery: **%s**", title), emb); err != nil {
+		if err := s.postToDiscordChannel("gallery", fmt.Sprintf("@here New photo added to the TriGameDev Gallery: **%s**\n%s", title, siteURL), emb); err != nil {
 			return err
 		}
 		_, _ = s.db.Exec(`UPDATE trigamedev.gallery SET discord_announced = TRUE WHERE id = $1`, id)
@@ -281,19 +305,21 @@ func (s *Server) announceEntryByID(section string, id int) error {
 		if err != nil {
 			return err
 		}
+		siteURL := fmt.Sprintf("https://trigamedev.org/media/%s", slugify(title))
 		emb := &discordEmbed{
 			Title:       title,
-			URL:         videoURL,
+			URL:         siteURL,
 			Description: desc,
 			Fields: []discordEmbedField{
 				{Name: "Creator", Value: speaker, Inline: true},
-				{Name: "Watch", Value: videoURL, Inline: false},
+				{Name: "View on TriGameDev", Value: siteURL, Inline: false},
+				{Name: "Direct Video Link", Value: videoURL, Inline: false},
 			},
 		}
 		if img := resolvePublicURL(thumbURL); img != "" {
 			emb.Image = &discordEmbedMedia{URL: img}
 		}
-		if err := s.postToDiscordChannel("videos", fmt.Sprintf("@here New video posted to TriGameDev: **%s**\n%s", title, videoURL), emb); err != nil {
+		if err := s.postToDiscordChannel("videos", fmt.Sprintf("@here New video posted to TriGameDev: **%s**\n%s", title, siteURL), emb); err != nil {
 			return err
 		}
 		_, _ = s.db.Exec(`UPDATE trigamedev.videos SET discord_announced = TRUE WHERE id = $1`, id)
@@ -310,21 +336,22 @@ func (s *Server) announceEntryByID(section string, id int) error {
 		if err != nil {
 			return err
 		}
+		siteURL := fmt.Sprintf("https://trigamedev.org/keys/%s", slugify(title))
 		emb := &discordEmbed{
 			Title:       title,
-			URL:         "https://trigamedev.org",
+			URL:         siteURL,
 			Description: desc,
 			Fields: []discordEmbedField{
 				{Name: "Platform", Value: platform, Inline: true},
 				{Name: "Donated By", Value: donor, Inline: true},
 				{Name: "Available Keys", Value: fmt.Sprintf("%d", totalKeys), Inline: true},
-				{Name: "Claim Key", Value: "https://trigamedev.org (Key Vault)", Inline: false},
+				{Name: "Claim Key on TriGameDev", Value: siteURL, Inline: false},
 			},
 		}
 		if img := resolvePublicURL(coverURL); img != "" {
 			emb.Image = &discordEmbedMedia{URL: img}
 		}
-		if err := s.postToDiscordChannel("keys", fmt.Sprintf("@here **%s** shared keys for **%s** (%s) in the Key Vault!", donor, title, platform), emb); err != nil {
+		if err := s.postToDiscordChannel("keys", fmt.Sprintf("@here **%s** shared keys for **%s** (%s) in the Key Vault!\n%s", donor, title, platform, siteURL), emb); err != nil {
 			return err
 		}
 		_, _ = s.db.Exec(`UPDATE trigamedev.key_pools SET discord_announced = TRUE WHERE id = $1`, id)
@@ -339,22 +366,23 @@ func (s *Server) announceEntryByID(section string, id int) error {
 		if err != nil {
 			return err
 		}
+		siteURL := fmt.Sprintf("https://trigamedev.org/library/%s", slugify(title))
 		emb := &discordEmbed{
 			Title:       title,
-			URL:         "https://trigamedev.org",
+			URL:         siteURL,
 			Description: desc,
 			Fields: []discordEmbedField{
 				{Name: "Author", Value: author, Inline: true},
 				{Name: "Category", Value: category, Inline: true},
 				{Name: "Format", Value: fmt.Sprintf("%s (%s)", fmtLabel, sizeLabel), Inline: true},
 				{Name: "Shared By", Value: uploadedBy, Inline: true},
-				{Name: "Download", Value: "https://trigamedev.org (Ebook Library)", Inline: false},
+				{Name: "Download on TriGameDev", Value: siteURL, Inline: false},
 			},
 		}
 		if img := resolvePublicURL(coverURL); img != "" {
 			emb.Image = &discordEmbedMedia{URL: img}
 		}
-		if err := s.postToDiscordChannel("ebooks", fmt.Sprintf("@here New book in the Ebook Library: **%s** by *%s*!", title, author), emb); err != nil {
+		if err := s.postToDiscordChannel("ebooks", fmt.Sprintf("@here New book in the Ebook Library: **%s** by *%s*!\n%s", title, author, siteURL), emb); err != nil {
 			return err
 		}
 		_, _ = s.db.Exec(`UPDATE trigamedev.ebooks SET discord_announced = TRUE WHERE id = $1`, id)

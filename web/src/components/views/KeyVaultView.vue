@@ -10,6 +10,9 @@ const {
   myKeys,
   filteredKeyPools,
   showDonateModal,
+  activeSlug,
+  slugify,
+  navigateTo,
   loginWithDiscord
 } = useTriGameDevStore()
 
@@ -91,7 +94,13 @@ const { copiedKeyId, claimKeyFromPool, deleteKeyProject, copyCode } = useKeyVaul
         <div
           v-for="project in filteredKeyPools"
           :key="project.id"
-          class="bg-[#121215] p-4 border border-zinc-800 flex flex-col sm:flex-row gap-4 justify-between"
+          :id="'slug-' + (project.slug || slugify(project.title))"
+          class="bg-[#121215] p-4 border flex flex-col sm:flex-row gap-4 justify-between transition"
+          :class="
+            (project.slug || slugify(project.title)) === activeSlug
+              ? 'border-[#ef4444] ring-1 ring-[#ef4444]'
+              : 'border-zinc-800'
+          "
         >
           <img
             :src="project.cover_image_url || '/brand/filler.png'"
@@ -111,7 +120,12 @@ const { copiedKeyId, claimKeyFromPool, deleteKeyProject, copyCode } = useKeyVaul
                   {{ project.available_count }} / {{ project.total_count }} KEYS LEFT
                 </span>
               </div>
-              <h3 class="font-bold text-base text-white uppercase mt-1.5">{{ project.title }}</h3>
+              <h3
+                @click="navigateTo('keys', project.slug || slugify(project.title))"
+                class="font-bold text-base text-white hover:text-[#ef4444] uppercase mt-1.5 cursor-pointer transition"
+              >
+                {{ project.title }}
+              </h3>
               <p class="text-xs text-zinc-400 line-clamp-2 mt-1">{{ project.description }}</p>
             </div>
 

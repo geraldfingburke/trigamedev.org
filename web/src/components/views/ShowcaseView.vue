@@ -1,7 +1,7 @@
 <script setup>
 import { useTriGameDevStore } from '../../composables/useTriGameDevStore'
 
-const { filteredShowcase } = useTriGameDevStore()
+const { filteredShowcase, activeSlug, slugify, navigateTo } = useTriGameDevStore()
 </script>
 
 <template>
@@ -19,7 +19,13 @@ const { filteredShowcase } = useTriGameDevStore()
       <article
         v-for="game in filteredShowcase"
         :key="game.id"
-        class="bg-[#121215] border border-zinc-800 flex flex-col justify-between"
+        :id="'slug-' + (game.slug || slugify(game.title))"
+        class="bg-[#121215] border flex flex-col justify-between transition"
+        :class="
+          (game.slug || slugify(game.title)) === activeSlug
+            ? 'border-[#ef4444] ring-1 ring-[#ef4444]'
+            : 'border-zinc-800'
+        "
       >
         <div>
           <div class="relative h-48 overflow-hidden bg-black border-b border-zinc-800">
@@ -29,7 +35,12 @@ const { filteredShowcase } = useTriGameDevStore()
             <span class="px-2 py-0.5 bg-zinc-900 border border-zinc-700 text-[10px] font-mono uppercase text-[#ef4444]">
               {{ game.engine }}
             </span>
-            <h3 class="font-bold text-base text-white uppercase mt-2">{{ game.title }}</h3>
+            <h3
+              @click="navigateTo('showcase', game.slug || slugify(game.title))"
+              class="font-bold text-base text-white hover:text-[#ef4444] uppercase mt-2 cursor-pointer transition"
+            >
+              {{ game.title }}
+            </h3>
             <p class="text-xs font-mono text-zinc-400">BY {{ game.developer_name }}</p>
             <p class="text-xs text-zinc-400 mt-2 leading-relaxed">{{ game.description }}</p>
           </div>

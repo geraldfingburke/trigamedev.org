@@ -2,7 +2,7 @@
 import { Trophy, ExternalLink } from 'lucide-vue-next'
 import { useTriGameDevStore } from '../../composables/useTriGameDevStore'
 
-const { overview, selectedWinnersJam } = useTriGameDevStore()
+const { overview, selectedWinnersJam, activeSlug, slugify, navigateTo } = useTriGameDevStore()
 </script>
 
 <template>
@@ -116,7 +116,13 @@ const { overview, selectedWinnersJam } = useTriGameDevStore()
           <div
             v-for="jam in overview.jams"
             :key="jam.id"
-            class="bg-[#121215] border border-zinc-800 flex flex-col justify-between"
+            :id="'slug-' + (jam.slug || slugify(jam.title))"
+            class="bg-[#121215] border flex flex-col justify-between transition"
+            :class="
+              (jam.slug || slugify(jam.title)) === activeSlug
+                ? 'border-[#ef4444] ring-1 ring-[#ef4444]'
+                : 'border-zinc-800'
+            "
           >
             <div>
               <img
@@ -130,7 +136,13 @@ const { overview, selectedWinnersJam } = useTriGameDevStore()
                     {{ jam.jam_type === 'other' ? 'Other Jam' : jam.status }}
                   </span>
                 </div>
-                <h3 class="text-sm font-extrabold text-white uppercase truncate" :title="jam.title">{{ jam.title }}</h3>
+                <h3
+                  @click="navigateTo('jams', jam.slug || slugify(jam.title))"
+                  class="text-sm font-extrabold text-white hover:text-[#ef4444] uppercase truncate cursor-pointer transition"
+                  :title="jam.title"
+                >
+                  {{ jam.title }}
+                </h3>
                 <div class="text-[11px] font-mono text-zinc-300 bg-[#09090b] border border-zinc-800 px-2.5 py-1 truncate">
                   THEME: <span class="text-white font-bold">{{ jam.theme }}</span>
                 </div>

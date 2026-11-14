@@ -1,7 +1,7 @@
 <script setup>
 import { useTriGameDevStore } from '../../composables/useTriGameDevStore'
 
-const { overview } = useTriGameDevStore()
+const { overview, activeSlug, slugify, navigateTo } = useTriGameDevStore()
 </script>
 
 <template>
@@ -19,13 +19,24 @@ const { overview } = useTriGameDevStore()
       <article
         v-for="post in overview.news"
         :key="post.id"
-        class="p-6 bg-[#121215] border border-zinc-800 flex flex-col gap-2"
+        :id="'slug-' + (post.slug || slugify(post.title))"
+        class="p-6 bg-[#121215] border flex flex-col gap-2 transition"
+        :class="
+          (post.slug || slugify(post.title)) === activeSlug
+            ? 'border-[#ef4444] ring-1 ring-[#ef4444]'
+            : 'border-zinc-800'
+        "
       >
         <div class="flex items-center justify-between text-xs font-mono">
           <span class="px-2 py-0.5 bg-zinc-900 border border-zinc-700 text-[#ef4444] uppercase">{{ post.tag }}</span>
           <span class="text-zinc-500">{{ post.published_at }} // BY {{ post.author_name }} ({{ post.author_role }})</span>
         </div>
-        <h2 class="text-lg font-bold text-white uppercase mt-1">{{ post.title }}</h2>
+        <h2
+          @click="navigateTo('news', post.slug || slugify(post.title))"
+          class="text-lg font-bold text-white hover:text-[#ef4444] uppercase mt-1 cursor-pointer transition"
+        >
+          {{ post.title }}
+        </h2>
         <p class="text-sm text-zinc-300 leading-relaxed whitespace-pre-line">{{ post.body_markdown }}</p>
       </article>
     </div>
