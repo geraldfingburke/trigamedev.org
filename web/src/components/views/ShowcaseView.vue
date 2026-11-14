@@ -34,20 +34,13 @@ const { filteredShowcase } = useTriGameDevStore()
             <p class="text-xs text-zinc-400 mt-2 leading-relaxed">{{ game.description }}</p>
           </div>
         </div>
-        <div class="p-4 pt-0 grid grid-cols-2 gap-2">
+        <div class="p-4 pt-0">
           <a
-            :href="game.play_url"
+            :href="game.play_url || game.source_url || '#'"
             target="_blank"
-            class="py-2 bg-white hover:bg-zinc-200 text-black text-xs font-bold uppercase tracking-wider text-center transition"
+            class="block w-full py-2.5 bg-white hover:bg-zinc-200 text-black text-xs font-bold uppercase tracking-wider text-center transition"
           >
-            Play Game
-          </a>
-          <a
-            :href="game.source_url"
-            target="_blank"
-            class="py-2 border border-zinc-700 hover:border-white text-zinc-300 hover:text-white text-xs font-bold uppercase tracking-wider text-center transition"
-          >
-            Source / Store
+            {{ game.action_label || (game.play_url?.includes('steampowered.com') ? 'Buy on Steam' : 'Play Now on Itch.io') }}
           </a>
         </div>
       </article>

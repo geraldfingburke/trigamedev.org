@@ -235,22 +235,13 @@ function formatEventDate(iso) {
 
           <div class="p-4 flex flex-col gap-3">
             <p class="text-xs text-zinc-400 line-clamp-2">{{ game.description }}</p>
-            <div class="grid grid-cols-2 gap-2">
-              <a
-                :href="game.play_url || '#'"
-                target="_blank"
-                class="py-2 px-3 bg-white hover:bg-zinc-200 text-black font-bold text-xs uppercase tracking-wider text-center transition"
-              >
-                Play Build
-              </a>
-              <a
-                :href="game.source_url || '#'"
-                target="_blank"
-                class="py-2 px-3 bg-transparent border border-zinc-700 hover:border-white text-zinc-300 hover:text-white font-bold text-xs uppercase tracking-wider text-center transition"
-              >
-                Source / Info
-              </a>
-            </div>
+            <a
+              :href="game.play_url || game.source_url || '#'"
+              target="_blank"
+              class="block w-full py-2 px-3 bg-white hover:bg-zinc-200 text-black font-bold text-xs uppercase tracking-wider text-center transition"
+            >
+              {{ game.action_label || (game.play_url?.includes('steampowered.com') ? 'Buy on Steam' : 'Play Now on Itch.io') }}
+            </a>
           </div>
         </article>
       </div>

@@ -151,6 +151,7 @@ ALTER TABLE trigamedev.events ADD COLUMN IF NOT EXISTS created_by INT REFERENCES
 ALTER TABLE trigamedev.news ADD COLUMN IF NOT EXISTS created_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL;
 ALTER TABLE trigamedev.game_jams ADD COLUMN IF NOT EXISTS created_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL;
 ALTER TABLE trigamedev.showcase ADD COLUMN IF NOT EXISTS created_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL;
+ALTER TABLE trigamedev.showcase ADD COLUMN IF NOT EXISTS action_label VARCHAR(60) DEFAULT '';
 ALTER TABLE trigamedev.gallery ADD COLUMN IF NOT EXISTS created_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL;
 ALTER TABLE trigamedev.videos ADD COLUMN IF NOT EXISTS created_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL;
 

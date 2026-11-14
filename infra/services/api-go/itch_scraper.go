@@ -26,8 +26,9 @@ type ItchJamWinner struct {
 }
 
 type ItchScrapedData struct {
-	Kind              string          `json:"kind"`     // "jam" or "game"
-	Platform          string          `json:"platform"` // "Steam" or "Itch.io"
+	Kind              string          `json:"kind"`         // "jam" or "game"
+	Platform          string          `json:"platform"`     // "Steam" or "Itch.io"
+	ActionLabel       string          `json:"action_label"` // "Buy on Steam", "Wishlist on Steam", "Play Now on Itch.io", "Download from Itch.io"
 	URL               string          `json:"url"`
 	Title             string          `json:"title"`
 	Subtitle          string          `json:"subtitle"`           // Theme (for jam) or Developer Name(s) (for game)
@@ -148,6 +149,7 @@ func scrapeSteamGame(appID string) (*ItchScrapedData, error) {
 	out := &ItchScrapedData{
 		Kind:         "game",
 		Platform:     "Steam",
+		ActionLabel:  "Buy on Steam",
 		URL:          cleanURL,
 		SecondaryURL: cleanURL,
 		Tag:          "Steam",
@@ -164,7 +166,11 @@ func scrapeSteamGame(appID string) (*ItchScrapedData, error) {
 				Website          string   `json:"website"`
 				Developers       []string `json:"developers"`
 				Publishers       []string `json:"publishers"`
-				Genres           []struct {
+				ReleaseDate      struct {
+					ComingSoon bool   `json:"coming_soon"`
+					Date       string `json:"date"`
+				} `json:"release_date"`
+				Genres []struct {
 					Description string `json:"description"`
 				} `json:"genres"`
 			} `json:"data"`
@@ -174,6 +180,11 @@ func scrapeSteamGame(appID string) (*ItchScrapedData, error) {
 				d := entry.Data
 				out.Title = html.UnescapeString(strings.TrimSpace(d.Name))
 				out.Description = cleanHTMLText(d.ShortDescription)
+				if d.ReleaseDate.ComingSoon {
+					out.ActionLabel = "Wishlist on Steam"
+				} else {
+					out.ActionLabel = "Buy on Steam"
+				}
 				if d.HeaderImage != "" {
 					out.ImageURL = d.HeaderImage
 				} else if d.CapsuleImage != "" {
@@ -438,9 +449,18 @@ func scrapeItchGame(gameURL string) (*ItchScrapedData, error) {
 	}
 	meta := extractMetaMap(rawHTML)
 
+	inBrowser := strings.Contains(rawHTML, "iframe_placeholder") ||
+		strings.Contains(rawHTML, "html_embed_widget") ||
+		strings.Contains(rawHTML, "itch_iframe")
+	actionLabel := "Download from Itch.io"
+	if inBrowser {
+		actionLabel = "Play Now on Itch.io"
+	}
+
 	out := &ItchScrapedData{
 		Kind:         "game",
 		Platform:     "Itch.io",
+		ActionLabel:  actionLabel,
 		URL:          gameURL,
 		SecondaryURL: gameURL,
 		Title:        meta["og:title"],

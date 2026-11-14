@@ -208,23 +208,27 @@ function toggleCategory(key) {
             </div>
           </div>
 
-          <div>
-            <label class="text-xs font-mono uppercase text-zinc-400">Developer(s)</label>
-            <input
-              v-model="cmsForm.subtitle"
-              type="text"
-              class="w-full mt-1 px-3.5 py-2 bg-[#09090b] border border-zinc-700 text-sm text-white focus:outline-none focus:border-white"
-            />
-          </div>
-
-          <div>
-            <label class="text-xs font-mono uppercase text-zinc-400">Secondary Store / Source URL (Optional)</label>
-            <input
-              v-model="cmsForm.secondary_url"
-              type="url"
-              placeholder="https://store.steampowered.com/..."
-              class="w-full mt-1 px-3.5 py-2 bg-[#09090b] border border-zinc-700 text-sm text-white focus:outline-none focus:border-white"
-            />
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs font-mono uppercase text-zinc-400">Developer(s)</label>
+              <input
+                v-model="cmsForm.subtitle"
+                type="text"
+                class="w-full mt-1 px-3.5 py-2 bg-[#09090b] border border-zinc-700 text-sm text-white focus:outline-none focus:border-white"
+              />
+            </div>
+            <div>
+              <label class="text-xs font-mono uppercase text-zinc-400">Button Label</label>
+              <select
+                v-model="cmsForm.action_label"
+                class="w-full mt-1 px-3 py-2 bg-[#09090b] border border-zinc-700 text-sm text-white focus:outline-none focus:border-white"
+              >
+                <option value="Buy on Steam">Buy on Steam</option>
+                <option value="Wishlist on Steam">Wishlist on Steam</option>
+                <option value="Play Now on Itch.io">Play Now on Itch.io</option>
+                <option value="Download from Itch.io">Download from Itch.io</option>
+              </select>
+            </div>
           </div>
 
           <div>

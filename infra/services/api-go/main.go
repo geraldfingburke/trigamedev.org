@@ -154,6 +154,11 @@ func (s *Server) ensureMigrations() {
 		`ALTER TABLE trigamedev.news ADD COLUMN IF NOT EXISTS created_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL`,
 		`ALTER TABLE trigamedev.game_jams ADD COLUMN IF NOT EXISTS created_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL`,
 		`ALTER TABLE trigamedev.showcase ADD COLUMN IF NOT EXISTS created_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL`,
+		`ALTER TABLE trigamedev.showcase ADD COLUMN IF NOT EXISTS action_label VARCHAR(60) DEFAULT ''`,
+		`UPDATE trigamedev.showcase SET action_label = 'Play Now on Itch.io' WHERE id IN (2, 3, 5, 8, 9, 10, 14, 16, 18, 21) AND (action_label IS NULL OR action_label = '')`,
+		`UPDATE trigamedev.showcase SET action_label = 'Download from Itch.io' WHERE id IN (4, 6, 7, 12, 15, 17, 22) AND (action_label IS NULL OR action_label = '')`,
+		`UPDATE trigamedev.showcase SET action_label = 'Wishlist on Steam' WHERE id IN (23, 26, 32) AND (action_label IS NULL OR action_label = '')`,
+		`UPDATE trigamedev.showcase SET action_label = 'Buy on Steam' WHERE id IN (24, 25, 27, 28, 29, 30, 31) AND (action_label IS NULL OR action_label = '')`,
 		`ALTER TABLE trigamedev.gallery ADD COLUMN IF NOT EXISTS created_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL`,
 		`ALTER TABLE trigamedev.videos ADD COLUMN IF NOT EXISTS created_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL`,
 		`UPDATE trigamedev.game_jams SET created_by = (SELECT id FROM trigamedev.users WHERE is_og_admin = TRUE ORDER BY id LIMIT 1) WHERE created_by IS NULL`,
@@ -863,20 +868,28 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	// 4. Showcase ("Games by Our People") — randomized order
 	showcase := []map[string]any{}
 	sRows, err := s.db.Query(`
-		SELECT id, title, developer_name, description, thumbnail_url, play_url, source_url, engine, views_count, featured, COALESCE(created_by, 0)
-		FROM trigamedev.showcase ORDER BY RANDOM() LIMIT 24
+		SELECT id, title, developer_name, description, thumbnail_url, play_url, source_url, engine, views_count, featured, COALESCE(created_by, 0), COALESCE(action_label, '')
+		FROM trigamedev.showcase ORDER BY RANDOM() LIMIT 100
 	`)
 	if err == nil {
 		defer sRows.Close()
 		for sRows.Next() {
 			var id, views, createdBy int
-			var title, dev, desc, thumb, play, src, engine string
+			var title, dev, desc, thumb, play, src, engine, actionLabel string
 			var feat bool
-			if err := sRows.Scan(&id, &title, &dev, &desc, &thumb, &play, &src, &engine, &views, &feat, &createdBy); err == nil {
+			if err := sRows.Scan(&id, &title, &dev, &desc, &thumb, &play, &src, &engine, &views, &feat, &createdBy, &actionLabel); err == nil {
+				if actionLabel == "" {
+					if strings.Contains(strings.ToLower(play), "steampowered.com") {
+						actionLabel = "Buy on Steam"
+					} else {
+						actionLabel = "Play Now on Itch.io"
+					}
+				}
 				showcase = append(showcase, map[string]any{
 					"id": id, "title": title, "developer_name": dev, "description": desc,
 					"thumbnail_url": thumb, "play_url": play, "source_url": src,
-					"engine": engine, "views_count": views, "featured": feat, "created_by": createdBy,
+					"engine": engine, "views_count": views, "featured": feat,
+					"created_by": createdBy, "action_label": actionLabel,
 				})
 			}
 		}
@@ -1495,6 +1508,7 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 			Subtitle          string          `json:"subtitle"`
 			Description       string          `json:"description"`
 			Tag               string          `json:"tag"`
+			ActionLabel       string          `json:"action_label"`
 			URL               string          `json:"url"`
 			SecondaryURL      string          `json:"secondary_url"`
 			ImageURL          string          `json:"image_url"`
@@ -1525,6 +1539,9 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 				}
 				if req.Tag == "" {
 					req.Tag = scraped.Tag
+				}
+				if req.ActionLabel == "" {
+					req.ActionLabel = scraped.ActionLabel
 				}
 				if req.ImageURL == "" {
 					req.ImageURL = scraped.ImageURL
@@ -1619,10 +1636,20 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 			if srcURL == "" {
 				srcURL = req.URL
 			}
+			actLabel := req.ActionLabel
+			if actLabel == "" {
+				if scraped, sErr := scrapeItchURL(req.URL); sErr == nil && scraped.ActionLabel != "" {
+					actLabel = scraped.ActionLabel
+				} else if strings.Contains(strings.ToLower(req.URL), "steampowered.com") {
+					actLabel = "Buy on Steam"
+				} else {
+					actLabel = "Play Now on Itch.io"
+				}
+			}
 			_, err = s.db.Exec(`
-				INSERT INTO trigamedev.showcase (title, developer_name, description, thumbnail_url, play_url, source_url, engine, featured, created_by)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8)
-			`, req.Title, req.Subtitle, req.Description, req.ImageURL, req.URL, srcURL, req.Tag, u.ID)
+				INSERT INTO trigamedev.showcase (title, developer_name, description, thumbnail_url, play_url, source_url, engine, featured, created_by, action_label)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, $9)
+			`, req.Title, req.Subtitle, req.Description, req.ImageURL, req.URL, srcURL, req.Tag, u.ID, actLabel)
 		case "gallery":
 			evLabel := req.Tag
 			if evLabel == "" {

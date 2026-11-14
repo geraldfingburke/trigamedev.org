@@ -10,6 +10,7 @@ const cmsForm = ref({
   subtitle: '',
   description: '',
   tag: '',
+  action_label: 'Play Now on Itch.io',
   url: '',
   secondary_url: '',
   image_url: '',
@@ -38,6 +39,7 @@ export function useCms() {
       cmsForm.value.subtitle = data.subtitle || ''
       cmsForm.value.description = data.description || ''
       cmsForm.value.tag = data.tag || ''
+      cmsForm.value.action_label = data.action_label || 'Play Now on Itch.io'
       cmsForm.value.url = data.url || rawUrl
       cmsForm.value.secondary_url = data.secondary_url || ''
       cmsForm.value.image_url = data.image_url || ''
@@ -94,6 +96,7 @@ export function useCms() {
       cmsForm.value.subtitle = ''
       cmsForm.value.description = ''
       cmsForm.value.tag = ''
+      cmsForm.value.action_label = 'Play Now on Itch.io'
       cmsForm.value.url = ''
       cmsForm.value.secondary_url = ''
       cmsForm.value.image_url = ''
