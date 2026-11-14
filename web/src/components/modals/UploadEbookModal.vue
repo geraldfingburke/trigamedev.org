@@ -1,9 +1,20 @@
 <script setup>
+import { computed } from 'vue'
 import { X, Upload, Search, FileText } from 'lucide-vue-next'
 import { useTriGameDevStore } from '../../composables/useTriGameDevStore'
 import { useEbookLibrary } from '../../composables/useEbookLibrary'
 
-const { showUploadEbookModal } = useTriGameDevStore()
+const { showUploadEbookModal, ebooks } = useTriGameDevStore()
+
+const existingCategories = computed(() => {
+  const set = new Set(['Game Design', 'Programming', 'Art & Audio', 'History'])
+  for (const b of ebooks.value || []) {
+    if (b.category && b.category.trim()) {
+      set.add(b.category.trim())
+    }
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b))
+})
 const {
   ebookForm,
   selectedBookFile,
@@ -136,8 +147,13 @@ const {
           <input
             v-model="ebookForm.category"
             type="text"
+            list="ebook-categories-datalist"
+            placeholder="e.g. Game Design, Programming..."
             class="w-full mt-1 px-3 py-2 bg-[#09090b] border border-zinc-700 text-sm text-white focus:outline-none focus:border-white"
           />
+          <datalist id="ebook-categories-datalist">
+            <option v-for="cat in existingCategories" :key="cat" :value="cat" />
+          </datalist>
         </div>
         <div>
           <label class="text-xs font-mono uppercase text-zinc-400">Format</label>
