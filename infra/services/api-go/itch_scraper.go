@@ -7,26 +7,39 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
 
+type ItchJamWinner struct {
+	Rank     int     `json:"rank"`
+	Medal    string  `json:"medal"` // "Gold", "Silver", "Bronze"
+	Title    string  `json:"title"`
+	Authors  string  `json:"authors"`
+	GameURL  string  `json:"game_url"`
+	CoverURL string  `json:"cover_url"`
+	Score    float64 `json:"score"`
+}
+
 type ItchScrapedData struct {
-	Kind              string `json:"kind"` // "jam" or "game"
-	URL               string `json:"url"`
-	Title             string `json:"title"`
-	Subtitle          string `json:"subtitle"`           // Theme (for jam) or Developer Name(s) (for game)
-	Description       string `json:"description"`        // Summary / body
-	Tag               string `json:"tag"`                // Month label (for jam) or Engine / Made With / Genre (for game)
-	ImageURL          string `json:"image_url"`          // Cover image
-	SecondaryURL      string `json:"secondary_url"`      // External link (e.g. Steam store link) or Itch URL
-	StartDate         string `json:"start_date"`         // RFC3339
-	EndDate           string `json:"end_date"`           // RFC3339
-	Status            string `json:"status"`             // upcoming, active, voting, completed
-	ParticipantsCount int    `json:"participants_count"` // Joined / Ratings
-	SubmissionsCount  int    `json:"submissions_count"`  // Entries
+	Kind              string          `json:"kind"` // "jam" or "game"
+	URL               string          `json:"url"`
+	Title             string          `json:"title"`
+	Subtitle          string          `json:"subtitle"`           // Theme (for jam) or Developer Name(s) (for game)
+	Description       string          `json:"description"`        // Summary / body
+	Tag               string          `json:"tag"`                // Month label (for jam) or Engine / Made With / Genre (for game)
+	ImageURL          string          `json:"image_url"`          // Cover image
+	SecondaryURL      string          `json:"secondary_url"`      // External link (e.g. Steam store link) or Itch URL
+	StartDate         string          `json:"start_date"`         // RFC3339
+	EndDate           string          `json:"end_date"`           // RFC3339
+	Status            string          `json:"status"`             // upcoming, active, voting, completed
+	ParticipantsCount int             `json:"participants_count"` // Joined / Ratings
+	SubmissionsCount  int             `json:"submissions_count"`  // Entries
+	Winners           []ItchJamWinner `json:"winners"`            // Top 3 ranked entries (Gold, Silver, Bronze)
 }
 
 var (
@@ -85,7 +98,7 @@ func fetchURLString(targetURL string) (string, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return "", fmt.Errorf("itch.io returned HTTP %d", resp.StatusCode)
+		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
 	if err != nil {
@@ -112,6 +125,108 @@ func scrapeItchURL(rawURL string) (*ItchScrapedData, error) {
 	return scrapeItchGame(cleanURL)
 }
 
+func scrapeItchJamWinners(jamID int) []ItchJamWinner {
+	if jamID <= 0 {
+		return []ItchJamWinner{}
+	}
+
+	// Optional map of gameID -> direct game URL & fallback author from entries.json
+	gameDirectURL := map[int]string{}
+	gameAuthorFallback := map[int]string{}
+	if entriesStr, err := fetchURLString(fmt.Sprintf("https://itch.io/jam/%d/entries.json", jamID)); err == nil {
+		var ej struct {
+			JamGames []struct {
+				Game struct {
+					ID   int    `json:"id"`
+					URL  string `json:"url"`
+					User struct {
+						Name string `json:"name"`
+					} `json:"user"`
+				} `json:"game"`
+			} `json:"jam_games"`
+		}
+		if json.Unmarshal([]byte(entriesStr), &ej) == nil {
+			for _, jg := range ej.JamGames {
+				if jg.Game.ID > 0 {
+					gameDirectURL[jg.Game.ID] = jg.Game.URL
+					gameAuthorFallback[jg.Game.ID] = jg.Game.User.Name
+				}
+			}
+		}
+	}
+
+	resultsStr, err := fetchURLString(fmt.Sprintf("https://itch.io/jam/%d/results.json", jamID))
+	if err != nil {
+		return []ItchJamWinner{}
+	}
+
+	var rj struct {
+		Results []struct {
+			ID           int     `json:"id"`
+			Rank         int     `json:"rank"`
+			Title        string  `json:"title"`
+			CoverURL     string  `json:"cover_url"`
+			Score        float64 `json:"score"`
+			URL          string  `json:"url"`
+			Contributors []struct {
+				Name string `json:"name"`
+			} `json:"contributors"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal([]byte(resultsStr), &rj); err != nil || len(rj.Results) == 0 {
+		return []ItchJamWinner{}
+	}
+
+	sort.SliceStable(rj.Results, func(i, j int) bool {
+		return rj.Results[i].Rank < rj.Results[j].Rank
+	})
+
+	medals := []string{"Gold", "Silver", "Bronze"}
+	winners := []ItchJamWinner{}
+	for idx, res := range rj.Results {
+		if len(winners) >= 3 {
+			break
+		}
+		names := []string{}
+		for _, c := range res.Contributors {
+			if strings.TrimSpace(c.Name) != "" {
+				names = append(names, strings.TrimSpace(c.Name))
+			}
+		}
+		authorStr := strings.Join(names, ", ")
+		if authorStr == "" {
+			authorStr = gameAuthorFallback[res.ID]
+		}
+		if authorStr == "" {
+			authorStr = "Jam Participant"
+		}
+
+		gURL := gameDirectURL[res.ID]
+		if gURL == "" {
+			gURL = res.URL
+		}
+
+		medal := "Bronze"
+		if res.Rank >= 1 && res.Rank <= 3 {
+			medal = medals[res.Rank-1]
+		} else if idx < 3 {
+			medal = medals[idx]
+		}
+
+		winners = append(winners, ItchJamWinner{
+			Rank:     res.Rank,
+			Medal:    medal,
+			Title:    res.Title,
+			Authors:  authorStr,
+			GameURL:  gURL,
+			CoverURL: res.CoverURL,
+			Score:    res.Score,
+		})
+	}
+
+	return winners
+}
+
 func scrapeItchJam(jamURL string) (*ItchScrapedData, error) {
 	rawHTML, err := fetchURLString(jamURL)
 	if err != nil {
@@ -131,14 +246,16 @@ func scrapeItchJam(jamURL string) (*ItchScrapedData, error) {
 		Subtitle:     "Open Theme",
 		StartDate:    time.Now().Format(time.RFC3339),
 		EndDate:      time.Now().Add(72 * time.Hour).Format(time.RFC3339),
+		Winners:      []ItchJamWinner{},
 	}
 	if out.ImageURL == "" {
 		out.ImageURL = meta["twitter:image"]
 	}
 
-	// Parse ViewJam JSON for exact start_date, end_date, voting_end_date
+	// Parse ViewJam JSON for exact id, start_date, end_date, voting_end_date
 	if m := reViewJam.FindStringSubmatch(rawHTML); len(m) > 1 {
 		var vj struct {
+			ID            int    `json:"id"`
 			StartDate     string `json:"start_date"`
 			EndDate       string `json:"end_date"`
 			VotingEndDate string `json:"voting_end_date"`
@@ -163,6 +280,9 @@ func scrapeItchJam(jamURL string) (*ItchScrapedData, error) {
 						}
 					}
 				}
+			}
+			if vj.ID > 0 {
+				out.Winners = scrapeItchJamWinners(vj.ID)
 			}
 		}
 	}
@@ -339,4 +459,120 @@ func (s *Server) handleItchScrape(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, data)
+}
+
+func cleanBookQuery(raw string) (string, string) {
+	ext := filepath.Ext(raw)
+	if ext != "" {
+		raw = strings.TrimSuffix(raw, ext)
+	}
+	raw = strings.ReplaceAll(raw, "_", " ")
+	raw = strings.ReplaceAll(raw, ".", " ")
+
+	authorGuess := ""
+	if parts := strings.Split(raw, " - "); len(parts) >= 2 {
+		raw = strings.TrimSpace(parts[0])
+		authorGuess = strings.TrimSpace(parts[1])
+	}
+	// Strip parenthetical edition/year noise like (2nd Edition) or [2021]
+	reParen := regexp.MustCompile(`[\(\[][^\)\]]*[\)\]]`)
+	raw = strings.TrimSpace(reParen.ReplaceAllString(raw, " "))
+	raw = strings.Join(strings.Fields(raw), " ")
+	return raw, authorGuess
+}
+
+func (s *Server) handleBookScrape(w http.ResponseWriter, r *http.Request) {
+	rawQ := strings.TrimSpace(r.URL.Query().Get("q"))
+	if rawQ == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Query q required"})
+		return
+	}
+
+	cleanTitle, authorGuess := cleanBookQuery(rawQ)
+	if cleanTitle == "" {
+		cleanTitle = rawQ
+	}
+
+	bestTitle := cleanTitle
+	bestAuthor := authorGuess
+	bestDesc := ""
+	candidates := []string{}
+	seen := map[string]bool{}
+
+	addCandidate := func(u string) {
+		u = strings.TrimSpace(u)
+		if u != "" && !seen[u] && len(candidates) < 8 {
+			seen[u] = true
+			candidates = append(candidates, u)
+		}
+	}
+
+	// 1. Apple Books API (high-resolution 600x600 covers + clean metadata)
+	appleURL := fmt.Sprintf("https://itunes.apple.com/search?term=%s&media=ebook&limit=6", url.QueryEscape(cleanTitle))
+	if bodyStr, err := fetchURLString(appleURL); err == nil {
+		var aRes struct {
+			Results []struct {
+				TrackName      string `json:"trackName"`
+				ArtistName     string `json:"artistName"`
+				Description    string `json:"description"`
+				ArtworkURL100  string `json:"artworkUrl100"`
+			} `json:"results"`
+		}
+		if json.Unmarshal([]byte(bodyStr), &aRes) == nil {
+			for i, item := range aRes.Results {
+				if i == 0 {
+					if item.TrackName != "" {
+						bestTitle = item.TrackName
+					}
+					if bestAuthor == "" && item.ArtistName != "" {
+						bestAuthor = item.ArtistName
+					}
+					if bestDesc == "" && item.Description != "" {
+						bestDesc = cleanHTMLText(item.Description)
+						if len(bestDesc) > 360 {
+							bestDesc = bestDesc[:357] + "..."
+						}
+					}
+				}
+				if item.ArtworkURL100 != "" {
+					hiRes := strings.ReplaceAll(item.ArtworkURL100, "100x100bb.jpg", "600x600bb.jpg")
+					addCandidate(hiRes)
+				}
+			}
+		}
+	}
+
+	// 2. OpenLibrary Search API (additional cover editions)
+	olURL := fmt.Sprintf("https://openlibrary.org/search.json?q=%s&limit=6&fields=title,author_name,cover_i", url.QueryEscape(cleanTitle))
+	if bodyStr, err := fetchURLString(olURL); err == nil {
+		var olRes struct {
+			Docs []struct {
+				Title      string   `json:"title"`
+				AuthorName []string `json:"author_name"`
+				CoverI     int      `json:"cover_i"`
+			} `json:"docs"`
+		}
+		if json.Unmarshal([]byte(bodyStr), &olRes) == nil {
+			for i, doc := range olRes.Docs {
+				if i == 0 {
+					if bestTitle == cleanTitle && doc.Title != "" {
+						bestTitle = doc.Title
+					}
+					if bestAuthor == "" && len(doc.AuthorName) > 0 {
+						bestAuthor = strings.Join(doc.AuthorName, ", ")
+					}
+				}
+				if doc.CoverI > 0 {
+					addCandidate(fmt.Sprintf("https://covers.openlibrary.org/b/id/%d-L.jpg", doc.CoverI))
+				}
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"title":            bestTitle,
+		"author":           bestAuthor,
+		"description":      bestDesc,
+		"cover_candidates": candidates,
+	})
 }

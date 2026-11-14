@@ -24,6 +24,7 @@ import RevealedKeyModal from './components/modals/RevealedKeyModal.vue'
 import DonateKeysModal from './components/modals/DonateKeysModal.vue'
 import UploadEbookModal from './components/modals/UploadEbookModal.vue'
 import GalleryLightboxModal from './components/modals/GalleryLightboxModal.vue'
+import WinnersCircleModal from './components/modals/WinnersCircleModal.vue'
 
 const { activeSection, showToast, loadAllData } = useTriGameDevStore()
 
@@ -78,5 +79,6 @@ onMounted(() => {
     <DonateKeysModal />
     <UploadEbookModal />
     <GalleryLightboxModal />
+    <WinnersCircleModal />
   </div>
 </template>

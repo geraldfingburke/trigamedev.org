@@ -82,6 +82,8 @@ services:
       DISCORD_OG_ROLE_ID: ${DISCORD_OG_ROLE_ID}
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL}
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+    volumes:
+      - storage_data:/srv/storage/trigamedev
     depends_on:
       postgres:
         condition: service_healthy
@@ -124,3 +126,4 @@ volumes:
   caddy_data:
   caddy_config:
   pg_data:
+  storage_data:

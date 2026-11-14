@@ -7,34 +7,27 @@ const { activeSection, searchQuery, currentUser } = useTriGameDevStore()
 
 const tabs = computed(() => [
   { id: 'explore', label: 'EXPLORE' },
-  { id: 'jams', label: 'MONTHLY JAM' },
+  { id: 'jams', label: 'JAMS' },
   { id: 'events', label: 'EVENTS' },
   { id: 'news', label: 'ANNOUNCEMENTS' },
-  { id: 'showcase', label: 'SHOWCASE' },
+  { id: 'showcase', label: 'GAMES BY OUR PEOPLE' },
   { id: 'media', label: 'GALLERY & VIDEO' },
   { id: 'keys', label: 'KEY VAULT' },
   { id: 'library', label: 'EBOOK LIBRARY' },
-  ...(currentUser.value?.is_og_admin ? [{ id: 'cms', label: 'OG CMS [ADMIN]' }] : [])
+  ...(currentUser.value?.is_og_admin ? [{ id: 'cms', label: 'CMS' }] : [])
 ])
 </script>
 
 <template>
   <div class="flex flex-col gap-6">
-    <!-- Top Brand Bar & Search -->
+    <!-- Top Header & Search (No duplicate brand image; circle logo in NavRail stands on its own) -->
     <header class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-zinc-800 pb-5">
-      <button @click="activeSection = 'explore'" class="flex items-center gap-4 text-left cursor-pointer group">
-        <img
-          src="/brand/logo-large.png"
-          alt="TRIGAMEDEV"
-          class="h-11 sm:h-12 w-auto object-contain"
-        />
-        <div class="hidden sm:block">
-          <div class="font-mono text-[11px] uppercase tracking-widest text-zinc-400">
-            Northeast TN &amp; Beyond // Indie Game Collective
-          </div>
-          <div class="font-display font-bold text-sm text-white tracking-wide uppercase">
-            Solo game dev can be lonely. Let's be alone together.
-          </div>
+      <button @click="activeSection = 'explore'" class="flex flex-col text-left cursor-pointer group">
+        <div class="font-mono text-xs uppercase tracking-widest text-[#ef4444]">
+          Indie Dev Collective
+        </div>
+        <div class="font-display font-bold text-base sm:text-lg text-white tracking-wide uppercase mt-0.5">
+          Solo game dev can be lonely. Let's be alone together.
         </div>
       </button>
 
@@ -43,13 +36,13 @@ const tabs = computed(() => [
         <input
           v-model="searchQuery"
           type="text"
-          placeholder="FILTER GAMES, KEYS, EBOOKS..."
+          placeholder="What're you lookin' for?"
           class="w-full pl-10 pr-4 py-2.5 bg-[#09090b] border border-zinc-700 text-xs font-mono text-white placeholder-zinc-500 focus:outline-none focus:border-white transition"
         />
       </div>
     </header>
 
-    <!-- Horizontal Category Tabs (Sharp industrial tabs, no gradients) -->
+    <!-- Horizontal Category Tabs -->
     <div class="flex items-center justify-between border-b border-zinc-800 overflow-x-auto">
       <div class="flex items-center gap-1 shrink-0">
         <button

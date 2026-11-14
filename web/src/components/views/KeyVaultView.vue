@@ -9,7 +9,8 @@ const {
   keyPools,
   myKeys,
   filteredKeyPools,
-  showDonateModal
+  showDonateModal,
+  loginWithDiscord
 } = useTriGameDevStore()
 
 const { copiedKeyId, claimKeyFromPool, copyCode } = useKeyVault()
@@ -21,11 +22,10 @@ const { copiedKeyId, claimKeyFromPool, copyCode } = useKeyVault()
       <div>
         <h1 class="text-2xl font-extrabold text-white uppercase flex items-center gap-2.5">
           <KeyRound class="w-6 h-6 text-[#ef4444]" />
-          <span>Member Key Sharing Portal</span>
+          <span>Key Vault</span>
         </h1>
         <p class="text-xs sm:text-sm text-zinc-400 mt-1">
-          Single redemption per pool — claiming a key permanently ties it to your account and moves it to
-          <strong class="text-white">My Keys</strong>.
+          Claim a game key or donate keys to the community.
         </p>
       </div>
 
@@ -36,7 +36,7 @@ const { copiedKeyId, claimKeyFromPool, copyCode } = useKeyVault()
             class="px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider transition cursor-pointer"
             :class="keySubTab === 'pools' ? 'bg-white text-black' : 'text-zinc-400 hover:text-white'"
           >
-            Available Pools ({{ keyPools.length }})
+            Projects ({{ keyPools.length }})
           </button>
           <button
             @click="keySubTab = 'my-keys'"
@@ -68,16 +68,16 @@ const { copiedKeyId, claimKeyFromPool, copyCode } = useKeyVault()
         <div>
           <h3 class="font-bold text-white uppercase">Discord Member Login Required</h3>
           <p class="text-xs text-zinc-400">
-            Sign in with your TriGameDev Discord account to donate keys, redeem keys, or view your claimed keys.
+            Sign in with Discord to donate or claim keys.
           </p>
         </div>
       </div>
-      <a
-        href="/api/go/auth/discord/login"
-        class="px-4 py-2 bg-white hover:bg-zinc-200 text-black text-xs font-bold uppercase tracking-wider shrink-0"
+      <button
+        @click="loginWithDiscord"
+        class="px-4 py-2 bg-white hover:bg-zinc-200 text-black text-xs font-bold uppercase tracking-wider shrink-0 cursor-pointer"
       >
         Sign In with Discord
-      </a>
+      </button>
     </div>
 
     <div v-if="keySubTab === 'pools'">
@@ -85,54 +85,54 @@ const { copiedKeyId, claimKeyFromPool, copyCode } = useKeyVault()
         v-if="filteredKeyPools.length === 0"
         class="p-10 bg-[#121215] border border-zinc-800 text-center text-xs font-mono uppercase text-zinc-500"
       >
-        No key pools have been added yet.
+        No projects have been added yet.
       </div>
       <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div
-          v-for="pool in filteredKeyPools"
-          :key="pool.id"
+          v-for="project in filteredKeyPools"
+          :key="project.id"
           class="bg-[#121215] p-4 border border-zinc-800 flex flex-col sm:flex-row gap-4 justify-between"
         >
           <img
-            :src="pool.cover_image_url || '/brand/filler.png'"
-            :alt="pool.title"
+            :src="project.cover_image_url || '/brand/filler.png'"
+            :alt="project.title"
             class="w-full sm:w-36 h-36 object-cover bg-black border border-zinc-800 shrink-0"
           />
           <div class="flex-1 flex flex-col justify-between gap-3">
             <div>
               <div class="flex items-center justify-between gap-2">
                 <span class="px-2 py-0.5 text-[11px] font-mono uppercase bg-zinc-900 border border-zinc-700 text-zinc-300">
-                  {{ pool.platform }}
+                  {{ project.platform }}
                 </span>
                 <span
                   class="text-xs font-mono font-semibold"
-                  :class="pool.available_count > 0 ? 'text-white' : 'text-[#ef4444]'"
+                  :class="project.available_count > 0 ? 'text-white' : 'text-[#ef4444]'"
                 >
-                  {{ pool.available_count }} / {{ pool.total_count }} KEYS LEFT
+                  {{ project.available_count }} / {{ project.total_count }} KEYS LEFT
                 </span>
               </div>
-              <h3 class="font-bold text-base text-white uppercase mt-1.5">{{ pool.title }}</h3>
-              <p class="text-xs text-zinc-400 line-clamp-2 mt-1">{{ pool.description }}</p>
+              <h3 class="font-bold text-base text-white uppercase mt-1.5">{{ project.title }}</h3>
+              <p class="text-xs text-zinc-400 line-clamp-2 mt-1">{{ project.description }}</p>
             </div>
 
             <div class="flex items-center justify-between pt-2 border-t border-zinc-800">
-              <span class="text-[11px] font-mono text-zinc-500">BY {{ pool.donated_by_name }}</span>
+              <span class="text-[11px] font-mono text-zinc-500">BY {{ project.donated_by_name }}</span>
 
               <button
-                v-if="pool.claimed_by_user"
+                v-if="project.claimed_by_user"
                 @click="keySubTab = 'my-keys'"
                 class="px-3.5 py-1.5 bg-zinc-900 text-white border border-zinc-600 text-xs font-bold uppercase cursor-pointer"
               >
                 CLAIMED (VIEW MY KEYS)
               </button>
               <button
-                v-else-if="pool.available_count > 0"
-                @click="claimKeyFromPool(pool)"
+                v-else-if="project.available_count > 0"
+                @click="claimKeyFromPool(project)"
                 class="px-4 py-1.5 bg-white hover:bg-zinc-200 text-black text-xs font-bold uppercase tracking-wider cursor-pointer transition"
               >
-                Claim 1 Key
+                Claim Key
               </button>
-              <span v-else class="text-xs font-mono uppercase text-zinc-500">Pool Depleted</span>
+              <span v-else class="text-xs font-mono uppercase text-zinc-500">Depleted</span>
             </div>
           </div>
         </div>
@@ -147,7 +147,7 @@ const { copiedKeyId, claimKeyFromPool, copyCode } = useKeyVault()
         <Gift class="w-9 h-9 text-[#ef4444]" />
         <h3 class="font-bold text-base text-white uppercase">You haven't claimed any keys yet</h3>
         <p class="text-xs text-zinc-400 max-w-md">
-          Keys you redeem from community pools are permanently bound to your account and displayed here.
+          Keys you redeem from projects are permanently bound to your account and displayed here.
         </p>
       </div>
 

@@ -7,13 +7,13 @@ const { filteredShowcase } = useTriGameDevStore()
 <template>
   <div class="flex flex-col gap-5">
     <h1 class="text-2xl font-extrabold text-white uppercase border-b border-zinc-800 pb-3">
-      Member Game Showcase
+      Games by Our People
     </h1>
     <div
       v-if="filteredShowcase.length === 0"
       class="p-10 bg-[#121215] border border-zinc-800 text-center text-xs font-mono uppercase text-zinc-500"
     >
-      No showcase builds published yet.
+      No games published yet.
     </div>
     <div v-else class="grid grid-cols-1 md:grid-cols-3 gap-5">
       <article

@@ -1,25 +1,28 @@
 import { ref } from 'vue'
 import { useTriGameDevStore } from './useTriGameDevStore'
 
-export function useCms() {
-  const { showToast, apiFetch, loadAllData } = useTriGameDevStore()
+const scrapingItch = ref(false)
+const uploadingCmsImage = ref(false)
+const cmsForm = ref({
+  section: 'jams', // jams, showcase, news, events, gallery, videos
+  jam_type: 'monthly', // monthly, other
+  title: '',
+  subtitle: '',
+  description: '',
+  tag: '',
+  url: '',
+  secondary_url: '',
+  image_url: '',
+  start_date: '',
+  end_date: '',
+  status: 'active',
+  participants_count: 0,
+  submissions_count: 0,
+  winners: []
+})
 
-  const scrapingItch = ref(false)
-  const cmsForm = ref({
-    section: 'jams',
-    title: '',
-    subtitle: '',
-    description: '',
-    tag: '',
-    url: '',
-    secondary_url: '',
-    image_url: '',
-    start_date: '',
-    end_date: '',
-    status: 'active',
-    participants_count: 0,
-    submissions_count: 0
-  })
+export function useCms() {
+  const { showToast, apiFetch, uploadImageFile, loadAllData } = useTriGameDevStore()
 
   async function autofillFromItch() {
     if (!cmsForm.value.url || !cmsForm.value.url.includes('itch.io')) {
@@ -42,7 +45,8 @@ export function useCms() {
       cmsForm.value.status = data.status || 'active'
       cmsForm.value.participants_count = data.participants_count || 0
       cmsForm.value.submissions_count = data.submissions_count || 0
-      showToast(`Scraped ${data.kind.toUpperCase()}: "${data.title}" from itch.io!`)
+      cmsForm.value.winners = data.winners || []
+      showToast(`Scraped ${data.kind.toUpperCase()}: "${data.title}" (${cmsForm.value.winners.length} ranked winners)`)
     } catch (e) {
       showToast(`Scraper error: ${e.message}`)
     } finally {
@@ -50,9 +54,33 @@ export function useCms() {
     }
   }
 
+  async function handleCmsImageUpload(event) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    uploadingCmsImage.value = true
+    try {
+      const url = await uploadImageFile(file)
+      cmsForm.value.image_url = url
+      showToast('Image uploaded!')
+    } catch (e) {
+      showToast(e.message)
+    } finally {
+      uploadingCmsImage.value = false
+    }
+  }
+
+  function handleVideoUrlInput() {
+    const u = cmsForm.value.url.trim()
+    if (!u || cmsForm.value.image_url) return
+    const ytMatch = u.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})/)
+    if (ytMatch) {
+      cmsForm.value.image_url = `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`
+    }
+  }
+
   async function publishCMSItem() {
     if (!cmsForm.value.title && !cmsForm.value.url.includes('itch.io')) {
-      showToast('Please enter an itch.io URL or a title.')
+      showToast('Please enter a title (or an itch.io URL).')
       return
     }
     try {
@@ -64,9 +92,11 @@ export function useCms() {
       cmsForm.value.title = ''
       cmsForm.value.subtitle = ''
       cmsForm.value.description = ''
+      cmsForm.value.tag = ''
       cmsForm.value.url = ''
       cmsForm.value.secondary_url = ''
       cmsForm.value.image_url = ''
+      cmsForm.value.winners = []
       await loadAllData()
     } catch (e) {
       showToast(e.message)
@@ -95,8 +125,11 @@ export function useCms() {
 
   return {
     scrapingItch,
+    uploadingCmsImage,
     cmsForm,
     autofillFromItch,
+    handleCmsImageUpload,
+    handleVideoUrlInput,
     publishCMSItem,
     deleteCMSItem,
     triggerDiscordSync

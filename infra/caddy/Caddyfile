@@ -12,6 +12,11 @@
 		reverse_proxy api-go:8080
 	}
 
+	# Uploaded images & media
+	handle /uploads/* {
+		reverse_proxy api-go:8080
+	}
+
 	# Shared Go API
 	handle_path /api/go/* {
 		reverse_proxy api-go:8080

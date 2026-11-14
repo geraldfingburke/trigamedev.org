@@ -9,6 +9,11 @@ trigamedev.org, www.trigamedev.org {
 		reverse_proxy api-go:8080
 	}
 
+	# Uploaded images & media
+	handle /uploads/* {
+		reverse_proxy api-go:8080
+	}
+
 	# Shared Go API (TriGameDev Auth, Key Vault, Ebook Library, CMS)
 	handle_path /api/go/* {
 		reverse_proxy api-go:8080

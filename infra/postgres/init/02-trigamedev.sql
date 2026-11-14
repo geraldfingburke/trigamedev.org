@@ -141,3 +141,16 @@ CREATE TABLE IF NOT EXISTS trigamedev.ebooks (
     download_count INT DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- 11. Schema Migrations for Roles, Jam Winners, and Per-User Unread Notifications
+ALTER TABLE trigamedev.users ADD COLUMN IF NOT EXISTS roles_json TEXT DEFAULT '[]';
+ALTER TABLE trigamedev.game_jams ADD COLUMN IF NOT EXISTS jam_type VARCHAR(40) DEFAULT 'monthly';
+ALTER TABLE trigamedev.game_jams ADD COLUMN IF NOT EXISTS winners_json TEXT DEFAULT '[]';
+
+CREATE TABLE IF NOT EXISTS trigamedev.user_section_reads (
+    user_id INT NOT NULL REFERENCES trigamedev.users(id) ON DELETE CASCADE,
+    section VARCHAR(40) NOT NULL,
+    last_read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, section)
+);
+
