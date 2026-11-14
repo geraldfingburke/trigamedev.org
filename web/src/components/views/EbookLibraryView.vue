@@ -1,10 +1,10 @@
 <script setup>
-import { BookOpen, Plus, Download } from 'lucide-vue-next'
+import { BookOpen, Plus, Download, Trash2 } from 'lucide-vue-next'
 import { useTriGameDevStore } from '../../composables/useTriGameDevStore'
 import { useEbookLibrary } from '../../composables/useEbookLibrary'
 
 const { currentUser, filteredEbooks, showUploadEbookModal } = useTriGameDevStore()
-const { downloadEbook } = useEbookLibrary()
+const { downloadEbook, deleteEbook } = useEbookLibrary()
 </script>
 
 <template>
@@ -63,15 +63,31 @@ const { downloadEbook } = useEbookLibrary()
             <p class="text-xs text-zinc-400 mt-1.5 line-clamp-2">{{ book.description }}</p>
           </div>
 
-          <div class="flex items-center justify-between pt-2 border-t border-zinc-800">
-            <span class="text-[11px] font-mono text-zinc-500">{{ book.download_count }} DOWNLOADS</span>
-            <button
-              @click="downloadEbook(book)"
-              class="px-4 py-2 bg-white hover:bg-zinc-200 text-black text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition"
-            >
-              <Download class="w-3.5 h-3.5" />
-              <span>Direct Download</span>
-            </button>
+          <div class="flex items-center justify-between pt-2 border-t border-zinc-800 gap-2">
+            <div class="flex flex-col">
+              <span class="text-[11px] font-mono text-zinc-500">{{ book.download_count }} DOWNLOADS</span>
+              <span v-if="book.uploaded_by_name" class="text-[10px] font-mono text-zinc-600 uppercase">
+                SHARED BY {{ book.uploaded_by_name }}
+              </span>
+            </div>
+            <div class="flex items-center gap-2">
+              <button
+                v-if="book.can_delete"
+                @click="deleteEbook(book)"
+                class="px-2.5 py-2 bg-zinc-900 hover:bg-[#dc2626] text-zinc-300 hover:text-white border border-zinc-700 hover:border-[#dc2626] text-[11px] font-mono uppercase flex items-center gap-1 cursor-pointer transition"
+                title="Remove Ebook"
+              >
+                <Trash2 class="w-3.5 h-3.5" />
+                <span>Remove</span>
+              </button>
+              <button
+                @click="downloadEbook(book)"
+                class="px-4 py-2 bg-white hover:bg-zinc-200 text-black text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition"
+              >
+                <Download class="w-3.5 h-3.5" />
+                <span>Direct Download</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

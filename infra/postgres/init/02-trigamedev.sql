@@ -146,6 +146,7 @@ CREATE TABLE IF NOT EXISTS trigamedev.ebooks (
 ALTER TABLE trigamedev.users ADD COLUMN IF NOT EXISTS roles_json TEXT DEFAULT '[]';
 ALTER TABLE trigamedev.game_jams ADD COLUMN IF NOT EXISTS jam_type VARCHAR(40) DEFAULT 'monthly';
 ALTER TABLE trigamedev.game_jams ADD COLUMN IF NOT EXISTS winners_json TEXT DEFAULT '[]';
+ALTER TABLE trigamedev.ebooks ADD COLUMN IF NOT EXISTS uploaded_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS trigamedev.user_section_reads (
     user_id INT NOT NULL REFERENCES trigamedev.users(id) ON DELETE CASCADE,

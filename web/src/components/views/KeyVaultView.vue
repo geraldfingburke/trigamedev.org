@@ -1,5 +1,5 @@
 <script setup>
-import { KeyRound, Plus, Lock, Gift, Check, Copy } from 'lucide-vue-next'
+import { KeyRound, Plus, Lock, Gift, Check, Copy, Trash2 } from 'lucide-vue-next'
 import { useTriGameDevStore } from '../../composables/useTriGameDevStore'
 import { useKeyVault } from '../../composables/useKeyVault'
 
@@ -13,7 +13,7 @@ const {
   loginWithDiscord
 } = useTriGameDevStore()
 
-const { copiedKeyId, claimKeyFromPool, copyCode } = useKeyVault()
+const { copiedKeyId, claimKeyFromPool, deleteKeyProject, copyCode } = useKeyVault()
 </script>
 
 <template>
@@ -115,24 +115,36 @@ const { copiedKeyId, claimKeyFromPool, copyCode } = useKeyVault()
               <p class="text-xs text-zinc-400 line-clamp-2 mt-1">{{ project.description }}</p>
             </div>
 
-            <div class="flex items-center justify-between pt-2 border-t border-zinc-800">
+            <div class="flex items-center justify-between pt-2 border-t border-zinc-800 gap-2">
               <span class="text-[11px] font-mono text-zinc-500">BY {{ project.donated_by_name }}</span>
 
-              <button
-                v-if="project.claimed_by_user"
-                @click="keySubTab = 'my-keys'"
-                class="px-3.5 py-1.5 bg-zinc-900 text-white border border-zinc-600 text-xs font-bold uppercase cursor-pointer"
-              >
-                CLAIMED (VIEW MY KEYS)
-              </button>
-              <button
-                v-else-if="project.available_count > 0"
-                @click="claimKeyFromPool(project)"
-                class="px-4 py-1.5 bg-white hover:bg-zinc-200 text-black text-xs font-bold uppercase tracking-wider cursor-pointer transition"
-              >
-                Claim Key
-              </button>
-              <span v-else class="text-xs font-mono uppercase text-zinc-500">Depleted</span>
+              <div class="flex items-center gap-2">
+                <button
+                  v-if="project.can_delete"
+                  @click="deleteKeyProject(project)"
+                  class="px-2.5 py-1.5 bg-zinc-900 hover:bg-[#dc2626] text-zinc-300 hover:text-white border border-zinc-700 hover:border-[#dc2626] text-[11px] font-mono uppercase flex items-center gap-1 cursor-pointer transition"
+                  title="Remove Project"
+                >
+                  <Trash2 class="w-3.5 h-3.5" />
+                  <span>Remove</span>
+                </button>
+
+                <button
+                  v-if="project.claimed_by_user"
+                  @click="keySubTab = 'my-keys'"
+                  class="px-3.5 py-1.5 bg-zinc-900 text-white border border-zinc-600 text-xs font-bold uppercase cursor-pointer"
+                >
+                  CLAIMED (VIEW MY KEYS)
+                </button>
+                <button
+                  v-else-if="project.available_count > 0"
+                  @click="claimKeyFromPool(project)"
+                  class="px-4 py-1.5 bg-white hover:bg-zinc-200 text-black text-xs font-bold uppercase tracking-wider cursor-pointer transition"
+                >
+                  Claim Key
+                </button>
+                <span v-else class="text-xs font-mono uppercase text-zinc-500">Depleted</span>
+              </div>
             </div>
           </div>
         </div>

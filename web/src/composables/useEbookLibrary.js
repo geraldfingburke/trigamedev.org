@@ -137,6 +137,19 @@ export function useEbookLibrary() {
     setTimeout(() => loadAllData(), 800)
   }
 
+  async function deleteEbook(book) {
+    if (!book?.id) return
+    try {
+      await apiFetch(`/tgd/library/ebooks?id=${book.id}`, {
+        method: 'DELETE'
+      })
+      showToast(`Removed ebook "${book.title}".`)
+      await loadAllData()
+    } catch (e) {
+      showToast(e.message)
+    }
+  }
+
   return {
     ebookForm,
     selectedBookFile,
@@ -148,6 +161,7 @@ export function useEbookLibrary() {
     handleBookFileSelect,
     handleCustomCoverUpload,
     submitEbookUpload,
+    deleteEbook,
     downloadEbook
   }
 }

@@ -137,6 +137,9 @@ async function loadAllData() {
     ])
     currentUser.value = authData.user
     discordConfigured.value = authData.discord_configured
+    if (!currentUser.value && ['keys', 'library', 'cms'].includes(activeSection.value)) {
+      activeSection.value = 'explore'
+    }
     overview.value = {
       ...overview.value,
       ...ovData,
@@ -163,7 +166,9 @@ async function logout() {
     if (overview.value.unread) {
       overview.value.unread = {}
     }
-    if (activeSection.value === 'cms') activeSection.value = 'explore'
+    if (['keys', 'library', 'cms'].includes(activeSection.value)) {
+      activeSection.value = 'explore'
+    }
     showToast('Signed out.')
     await loadAllData()
   } catch (e) {

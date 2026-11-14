@@ -12,8 +12,12 @@ const tabs = computed(() => [
   { id: 'news', label: 'ANNOUNCEMENTS' },
   { id: 'showcase', label: 'GAMES BY OUR PEOPLE' },
   { id: 'media', label: 'GALLERY & VIDEO' },
-  { id: 'keys', label: 'KEY VAULT' },
-  { id: 'library', label: 'EBOOK LIBRARY' },
+  ...(currentUser.value
+    ? [
+        { id: 'keys', label: 'KEY VAULT' },
+        { id: 'library', label: 'EBOOK LIBRARY' }
+      ]
+    : []),
   ...(currentUser.value?.is_og_admin ? [{ id: 'cms', label: 'CMS' }] : [])
 ])
 </script>

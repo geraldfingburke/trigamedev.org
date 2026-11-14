@@ -106,6 +106,19 @@ export function useKeyVault() {
     }, 2000)
   }
 
+  async function deleteKeyProject(project) {
+    if (!project?.id) return
+    try {
+      await apiFetch(`/tgd/keys/pools?id=${project.id}`, {
+        method: 'DELETE'
+      })
+      showToast(`Removed project "${project.title}".`)
+      await loadAllData()
+    } catch (e) {
+      showToast(e.message)
+    }
+  }
+
   return {
     copiedKeyId,
     uploadingCover,
@@ -113,6 +126,7 @@ export function useKeyVault() {
     handleDonateCoverUpload,
     claimKeyFromPool,
     submitKeyDonation,
+    deleteKeyProject,
     copyCode
   }
 }

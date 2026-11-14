@@ -25,8 +25,12 @@ const navItems = computed(() => {
     { id: 'news', label: 'News & Announcements', icon: Newspaper, badge: unread.news || 0 },
     { id: 'showcase', label: 'Games by Our People', icon: Sparkles, badge: unread.showcase || 0 },
     { id: 'media', label: 'Photos & Videos', icon: ImageIcon, badge: unread.media || 0 },
-    { id: 'keys', label: 'Key Vault', icon: KeyRound, badge: unread.keys || 0 },
-    { id: 'library', label: 'Ebook Library', icon: BookOpen, badge: unread.library || 0 }
+    ...(u
+      ? [
+          { id: 'keys', label: 'Key Vault', icon: KeyRound, badge: unread.keys || 0 },
+          { id: 'library', label: 'Ebook Library', icon: BookOpen, badge: unread.library || 0 }
+        ]
+      : [])
   ]
 })
 </script>

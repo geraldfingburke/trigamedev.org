@@ -149,6 +149,7 @@ func (s *Server) ensureMigrations() {
 		`ALTER TABLE trigamedev.users ADD COLUMN IF NOT EXISTS roles_json TEXT DEFAULT '[]'`,
 		`ALTER TABLE trigamedev.game_jams ADD COLUMN IF NOT EXISTS jam_type VARCHAR(40) DEFAULT 'monthly'`,
 		`ALTER TABLE trigamedev.game_jams ADD COLUMN IF NOT EXISTS winners_json TEXT DEFAULT '[]'`,
+		`ALTER TABLE trigamedev.ebooks ADD COLUMN IF NOT EXISTS uploaded_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL`,
 		`CREATE TABLE IF NOT EXISTS trigamedev.user_section_reads (
 			user_id INT NOT NULL REFERENCES trigamedev.users(id) ON DELETE CASCADE,
 			section VARCHAR(40) NOT NULL,
@@ -847,11 +848,11 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 4. Showcase ("Games by Our People")
+	// 4. Showcase ("Games by Our People") — randomized order
 	showcase := []map[string]any{}
 	sRows, err := s.db.Query(`
 		SELECT id, title, developer_name, description, thumbnail_url, play_url, source_url, engine, views_count, featured
-		FROM trigamedev.showcase ORDER BY id DESC LIMIT 24
+		FROM trigamedev.showcase ORDER BY RANDOM() LIMIT 24
 	`)
 	if err == nil {
 		defer sRows.Close()
@@ -869,11 +870,11 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 5. Gallery
+	// 5. Gallery — randomized order
 	gallery := []map[string]any{}
 	gRows, err := s.db.Query(`
 		SELECT id, title, caption, image_url, event_label, uploaded_by
-		FROM trigamedev.gallery ORDER BY id DESC LIMIT 24
+		FROM trigamedev.gallery ORDER BY RANDOM() LIMIT 24
 	`)
 	if err == nil {
 		defer gRows.Close()
@@ -889,11 +890,11 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 6. Videos
+	// 6. Videos — randomized order
 	videos := []map[string]any{}
 	vRows, err := s.db.Query(`
 		SELECT id, title, description, video_url, thumbnail_url, speaker_name, duration
-		FROM trigamedev.videos ORDER BY id DESC LIMIT 24
+		FROM trigamedev.videos ORDER BY RANDOM() LIMIT 24
 	`)
 	if err == nil {
 		defer vRows.Close()
@@ -942,7 +943,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Member Key Sharing Portal: List Projects or Donate New Project/Keys
+// Member Key Sharing Portal: List Projects, Donate Keys, or Remove Own Project
 func (s *Server) handleKeyPools(w http.ResponseWriter, r *http.Request) {
 	u := s.currentUser(r)
 
@@ -953,7 +954,7 @@ func (s *Server) handleKeyPools(w http.ResponseWriter, r *http.Request) {
 		}
 		rows, err := s.db.Query(`
 			SELECT
-				p.id, p.title, p.platform, p.store_url, p.cover_image_url, p.description, p.donated_by_name,
+				p.id, p.title, p.platform, p.store_url, p.cover_image_url, p.description, p.donated_by_name, COALESCE(p.created_by, 0),
 				COUNT(k.id) FILTER (WHERE k.claimed_by IS NULL) AS available_count,
 				COUNT(k.id) AS total_count,
 				BOOL_OR(k.claimed_by = $1 AND $1 > 0) AS claimed_by_me
@@ -970,10 +971,11 @@ func (s *Server) handleKeyPools(w http.ResponseWriter, r *http.Request) {
 
 		pools := []map[string]any{}
 		for rows.Next() {
-			var id, avail, total int
+			var id, createdBy, avail, total int
 			var title, platform, store, cover, desc, donor string
 			var claimedByMe sql.NullBool
-			if err := rows.Scan(&id, &title, &platform, &store, &cover, &desc, &donor, &avail, &total, &claimedByMe); err == nil {
+			if err := rows.Scan(&id, &title, &platform, &store, &cover, &desc, &donor, &createdBy, &avail, &total, &claimedByMe); err == nil {
+				canDelete := u != nil && (u.IsOGAdmin || (createdBy > 0 && createdBy == u.ID) || strings.EqualFold(donor, u.DisplayName))
 				pools = append(pools, map[string]any{
 					"id":              id,
 					"title":           title,
@@ -982,6 +984,8 @@ func (s *Server) handleKeyPools(w http.ResponseWriter, r *http.Request) {
 					"cover_image_url": cover,
 					"description":     desc,
 					"donated_by_name": donor,
+					"created_by":      createdBy,
+					"can_delete":      canDelete,
 					"available_count": avail,
 					"total_count":     total,
 					"claimed_by_user": claimedByMe.Bool,
@@ -989,6 +993,32 @@ func (s *Server) handleKeyPools(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"pools": pools})
+		return
+	}
+
+	if r.Method == http.MethodDelete {
+		if u == nil {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "Sign in required"})
+			return
+		}
+		poolID, _ := strconv.Atoi(r.URL.Query().Get("id"))
+		if poolID <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Valid project id required"})
+			return
+		}
+		var createdBy int
+		var donor string
+		err := s.db.QueryRow(`SELECT COALESCE(created_by, 0), donated_by_name FROM trigamedev.key_pools WHERE id = $1`, poolID).Scan(&createdBy, &donor)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "Project not found"})
+			return
+		}
+		if !u.IsOGAdmin && createdBy != u.ID && !strings.EqualFold(donor, u.DisplayName) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "Only the member who shared these keys can remove this project"})
+			return
+		}
+		_, _ = s.db.Exec(`DELETE FROM trigamedev.key_pools WHERE id = $1`, poolID)
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 		return
 	}
 
@@ -1200,11 +1230,13 @@ func (s *Server) handleMyKeys(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"claimed_keys": claimed})
 }
 
-// Ebook Library: Browse & Upload Actual Ebook Files (Multipart or JSON)
+// Ebook Library: Browse, Upload, or Remove Own Ebooks
 func (s *Server) handleEbooks(w http.ResponseWriter, r *http.Request) {
+	u := s.currentUser(r)
+
 	if r.Method == http.MethodGet {
 		rows, err := s.db.Query(`
-			SELECT id, title, author, category, description, cover_image_url, file_name, file_format, file_size_label, uploaded_by_name, download_count
+			SELECT id, title, author, category, description, cover_image_url, file_name, file_format, file_size_label, uploaded_by_name, COALESCE(uploaded_by, 0), download_count
 			FROM trigamedev.ebooks ORDER BY id DESC
 		`)
 		if err != nil {
@@ -1215,9 +1247,10 @@ func (s *Server) handleEbooks(w http.ResponseWriter, r *http.Request) {
 
 		ebooks := []map[string]any{}
 		for rows.Next() {
-			var id, dlCount int
+			var id, uploadedBy, dlCount int
 			var title, author, cat, desc, cover, fname, ffmt, fsize, upBy string
-			if err := rows.Scan(&id, &title, &author, &cat, &desc, &cover, &fname, &ffmt, &fsize, &upBy, &dlCount); err == nil {
+			if err := rows.Scan(&id, &title, &author, &cat, &desc, &cover, &fname, &ffmt, &fsize, &upBy, &uploadedBy, &dlCount); err == nil {
+				canDelete := u != nil && (u.IsOGAdmin || (uploadedBy > 0 && uploadedBy == u.ID) || strings.EqualFold(upBy, u.DisplayName))
 				ebooks = append(ebooks, map[string]any{
 					"id":               id,
 					"title":            title,
@@ -1229,6 +1262,8 @@ func (s *Server) handleEbooks(w http.ResponseWriter, r *http.Request) {
 					"file_format":      ffmt,
 					"file_size_label":  fsize,
 					"uploaded_by_name": upBy,
+					"uploaded_by":      uploadedBy,
+					"can_delete":       canDelete,
 					"download_count":   dlCount,
 				})
 			}
@@ -1237,8 +1272,36 @@ func (s *Server) handleEbooks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == http.MethodDelete {
+		if u == nil {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "Sign in required"})
+			return
+		}
+		bookID, _ := strconv.Atoi(r.URL.Query().Get("id"))
+		if bookID <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Valid ebook id required"})
+			return
+		}
+		var uploadedBy int
+		var upBy, fileName string
+		err := s.db.QueryRow(`SELECT COALESCE(uploaded_by, 0), uploaded_by_name, file_name FROM trigamedev.ebooks WHERE id = $1`, bookID).Scan(&uploadedBy, &upBy, &fileName)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "Ebook not found"})
+			return
+		}
+		if !u.IsOGAdmin && uploadedBy != u.ID && !strings.EqualFold(upBy, u.DisplayName) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "Only the member who shared this ebook can remove it"})
+			return
+		}
+		_, _ = s.db.Exec(`DELETE FROM trigamedev.ebooks WHERE id = $1`, bookID)
+		if fileName != "" {
+			_ = os.Remove(filepath.Join(s.storageDir, "ebooks", filepath.Base(fileName)))
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+		return
+	}
+
 	if r.Method == http.MethodPost {
-		u := s.currentUser(r)
 		if u == nil || !u.IsGuildMember {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "Member login required"})
 			return
@@ -1338,10 +1401,10 @@ func (s *Server) handleEbooks(w http.ResponseWriter, r *http.Request) {
 
 		var id int
 		err := s.db.QueryRow(`
-			INSERT INTO trigamedev.ebooks (title, author, category, description, cover_image_url, file_name, file_format, file_size_label, uploaded_by_name)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			INSERT INTO trigamedev.ebooks (title, author, category, description, cover_image_url, file_name, file_format, file_size_label, uploaded_by_name, uploaded_by)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 			RETURNING id
-		`, title, author, category, description, coverImageURL, fileName, fileFormat, fileSizeLabel, u.DisplayName).Scan(&id)
+		`, title, author, category, description, coverImageURL, fileName, fileFormat, fileSizeLabel, u.DisplayName, u.ID).Scan(&id)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
