@@ -150,6 +150,17 @@ func (s *Server) ensureMigrations() {
 		`ALTER TABLE trigamedev.game_jams ADD COLUMN IF NOT EXISTS jam_type VARCHAR(40) DEFAULT 'monthly'`,
 		`ALTER TABLE trigamedev.game_jams ADD COLUMN IF NOT EXISTS winners_json TEXT DEFAULT '[]'`,
 		`ALTER TABLE trigamedev.ebooks ADD COLUMN IF NOT EXISTS uploaded_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL`,
+		`ALTER TABLE trigamedev.events ADD COLUMN IF NOT EXISTS created_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL`,
+		`ALTER TABLE trigamedev.news ADD COLUMN IF NOT EXISTS created_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL`,
+		`ALTER TABLE trigamedev.game_jams ADD COLUMN IF NOT EXISTS created_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL`,
+		`ALTER TABLE trigamedev.showcase ADD COLUMN IF NOT EXISTS created_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL`,
+		`ALTER TABLE trigamedev.gallery ADD COLUMN IF NOT EXISTS created_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL`,
+		`ALTER TABLE trigamedev.videos ADD COLUMN IF NOT EXISTS created_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL`,
+		`UPDATE trigamedev.game_jams SET created_by = (SELECT id FROM trigamedev.users WHERE is_og_admin = TRUE ORDER BY id LIMIT 1) WHERE created_by IS NULL`,
+		`UPDATE trigamedev.gallery g SET created_by = u.id FROM trigamedev.users u WHERE g.created_by IS NULL AND LOWER(g.uploaded_by) = LOWER(u.display_name)`,
+		`UPDATE trigamedev.videos v SET created_by = u.id FROM trigamedev.users u WHERE v.created_by IS NULL AND LOWER(v.speaker_name) = LOWER(u.display_name)`,
+		`UPDATE trigamedev.news n SET created_by = u.id FROM trigamedev.users u WHERE n.created_by IS NULL AND LOWER(n.author_name) = LOWER(u.display_name)`,
+		`UPDATE trigamedev.showcase s SET created_by = u.id FROM trigamedev.users u WHERE s.created_by IS NULL AND LOWER(s.developer_name) = LOWER(u.display_name)`,
 		`CREATE TABLE IF NOT EXISTS trigamedev.user_section_reads (
 			user_id INT NOT NULL REFERENCES trigamedev.users(id) ON DELETE CASCADE,
 			section VARCHAR(40) NOT NULL,
@@ -778,19 +789,20 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	// 1. Events (both upcoming and past, ordered newest first)
 	events := []map[string]any{}
 	eRows, err := s.db.Query(`
-		SELECT id, title, description, location, start_time, cover_image_url, tag, rsvp_count
+		SELECT id, title, description, location, start_time, cover_image_url, tag, rsvp_count, COALESCE(created_by, 0)
 		FROM trigamedev.events ORDER BY start_time DESC LIMIT 40
 	`)
 	if err == nil {
 		defer eRows.Close()
 		for eRows.Next() {
-			var id, rsvp int
+			var id, rsvp, createdBy int
 			var title, desc, loc, img, tag string
 			var st time.Time
-			if err := eRows.Scan(&id, &title, &desc, &loc, &st, &img, &tag, &rsvp); err == nil {
+			if err := eRows.Scan(&id, &title, &desc, &loc, &st, &img, &tag, &rsvp, &createdBy); err == nil {
 				events = append(events, map[string]any{
 					"id": id, "title": title, "description": desc, "location": loc,
 					"start_time": st.Format(time.RFC3339), "cover_image_url": img, "tag": tag, "rsvp_count": rsvp,
+					"created_by": createdBy,
 				})
 			}
 		}
@@ -799,21 +811,21 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	// 2. News
 	news := []map[string]any{}
 	nRows, err := s.db.Query(`
-		SELECT id, title, summary, body_markdown, author_name, author_role, tag, is_pinned, published_at
+		SELECT id, title, summary, body_markdown, author_name, author_role, tag, is_pinned, published_at, COALESCE(created_by, 0)
 		FROM trigamedev.news ORDER BY is_pinned DESC, published_at DESC LIMIT 20
 	`)
 	if err == nil {
 		defer nRows.Close()
 		for nRows.Next() {
-			var id int
+			var id, createdBy int
 			var title, summary, body, author, role, tag string
 			var pinned bool
 			var pub time.Time
-			if err := nRows.Scan(&id, &title, &summary, &body, &author, &role, &tag, &pinned, &pub); err == nil {
+			if err := nRows.Scan(&id, &title, &summary, &body, &author, &role, &tag, &pinned, &pub, &createdBy); err == nil {
 				news = append(news, map[string]any{
 					"id": id, "title": title, "summary": summary, "body_markdown": body,
 					"author_name": author, "author_role": role, "tag": tag, "is_pinned": pinned,
-					"published_at": pub.Format("Jan 02, 2006"),
+					"published_at": pub.Format("Jan 02, 2006"), "created_by": createdBy,
 				})
 			}
 		}
@@ -822,16 +834,16 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	// 3. Game Jams (including winners_json and jam_type)
 	jams := []map[string]any{}
 	jRows, err := s.db.Query(`
-		SELECT id, title, month_label, theme, description, itch_url, cover_image_url, start_date, end_date, status, participants_count, submissions_count, COALESCE(jam_type, 'monthly'), COALESCE(winners_json, '[]')
+		SELECT id, title, month_label, theme, description, itch_url, cover_image_url, start_date, end_date, status, participants_count, submissions_count, COALESCE(jam_type, 'monthly'), COALESCE(winners_json, '[]'), COALESCE(created_by, 0)
 		FROM trigamedev.game_jams ORDER BY start_date DESC LIMIT 30
 	`)
 	if err == nil {
 		defer jRows.Close()
 		for jRows.Next() {
-			var id, parts, subs int
+			var id, parts, subs, createdBy int
 			var title, month, theme, desc, itch, img, status, jamType, winnersRaw string
 			var sd, ed time.Time
-			if err := jRows.Scan(&id, &title, &month, &theme, &desc, &itch, &img, &sd, &ed, &status, &parts, &subs, &jamType, &winnersRaw); err == nil {
+			if err := jRows.Scan(&id, &title, &month, &theme, &desc, &itch, &img, &sd, &ed, &status, &parts, &subs, &jamType, &winnersRaw, &createdBy); err == nil {
 				var winners []ItchJamWinner
 				_ = json.Unmarshal([]byte(winnersRaw), &winners)
 				if winners == nil {
@@ -842,7 +854,7 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 					"description": desc, "itch_url": itch, "cover_image_url": img,
 					"start_date": sd.Format(time.RFC3339), "end_date": ed.Format(time.RFC3339),
 					"status": status, "participants_count": parts, "submissions_count": subs,
-					"jam_type": jamType, "winners": winners,
+					"jam_type": jamType, "winners": winners, "created_by": createdBy,
 				})
 			}
 		}
@@ -851,20 +863,20 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	// 4. Showcase ("Games by Our People") — randomized order
 	showcase := []map[string]any{}
 	sRows, err := s.db.Query(`
-		SELECT id, title, developer_name, description, thumbnail_url, play_url, source_url, engine, views_count, featured
+		SELECT id, title, developer_name, description, thumbnail_url, play_url, source_url, engine, views_count, featured, COALESCE(created_by, 0)
 		FROM trigamedev.showcase ORDER BY RANDOM() LIMIT 24
 	`)
 	if err == nil {
 		defer sRows.Close()
 		for sRows.Next() {
-			var id, views int
+			var id, views, createdBy int
 			var title, dev, desc, thumb, play, src, engine string
 			var feat bool
-			if err := sRows.Scan(&id, &title, &dev, &desc, &thumb, &play, &src, &engine, &views, &feat); err == nil {
+			if err := sRows.Scan(&id, &title, &dev, &desc, &thumb, &play, &src, &engine, &views, &feat, &createdBy); err == nil {
 				showcase = append(showcase, map[string]any{
 					"id": id, "title": title, "developer_name": dev, "description": desc,
 					"thumbnail_url": thumb, "play_url": play, "source_url": src,
-					"engine": engine, "views_count": views, "featured": feat,
+					"engine": engine, "views_count": views, "featured": feat, "created_by": createdBy,
 				})
 			}
 		}
@@ -873,18 +885,18 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	// 5. Gallery — randomized order
 	gallery := []map[string]any{}
 	gRows, err := s.db.Query(`
-		SELECT id, title, caption, image_url, event_label, uploaded_by
+		SELECT id, title, caption, image_url, event_label, uploaded_by, COALESCE(created_by, 0)
 		FROM trigamedev.gallery ORDER BY RANDOM() LIMIT 24
 	`)
 	if err == nil {
 		defer gRows.Close()
 		for gRows.Next() {
-			var id int
+			var id, createdBy int
 			var title, cap, img, ev, up string
-			if err := gRows.Scan(&id, &title, &cap, &img, &ev, &up); err == nil {
+			if err := gRows.Scan(&id, &title, &cap, &img, &ev, &up, &createdBy); err == nil {
 				gallery = append(gallery, map[string]any{
 					"id": id, "title": title, "caption": cap, "image_url": img,
-					"event_label": ev, "uploaded_by": up,
+					"event_label": ev, "uploaded_by": up, "created_by": createdBy,
 				})
 			}
 		}
@@ -893,18 +905,18 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 	// 6. Videos — randomized order
 	videos := []map[string]any{}
 	vRows, err := s.db.Query(`
-		SELECT id, title, description, video_url, thumbnail_url, speaker_name, duration
+		SELECT id, title, description, video_url, thumbnail_url, speaker_name, duration, COALESCE(created_by, 0)
 		FROM trigamedev.videos ORDER BY RANDOM() LIMIT 24
 	`)
 	if err == nil {
 		defer vRows.Close()
 		for vRows.Next() {
-			var id int
+			var id, createdBy int
 			var title, desc, vurl, thumb, spk, dur string
-			if err := vRows.Scan(&id, &title, &desc, &vurl, &thumb, &spk, &dur); err == nil {
+			if err := vRows.Scan(&id, &title, &desc, &vurl, &thumb, &spk, &dur, &createdBy); err == nil {
 				videos = append(videos, map[string]any{
 					"id": id, "title": title, "description": desc, "video_url": vurl,
-					"thumbnail_url": thumb, "speaker_name": spk, "duration": dur,
+					"thumbnail_url": thumb, "speaker_name": spk, "duration": dur, "created_by": createdBy,
 				})
 			}
 		}
@@ -1556,9 +1568,9 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 				req.Tag = "Announcement"
 			}
 			_, err = s.db.Exec(`
-				INSERT INTO trigamedev.news (title, summary, body_markdown, author_name, author_role, tag)
-				VALUES ($1, $2, $3, $4, 'OG', $5)
-			`, req.Title, req.Subtitle, req.Description, u.DisplayName, req.Tag)
+				INSERT INTO trigamedev.news (title, summary, body_markdown, author_name, author_role, tag, created_by)
+				VALUES ($1, $2, $3, $4, 'OG', $5, $6)
+			`, req.Title, req.Subtitle, req.Description, u.DisplayName, req.Tag, u.ID)
 		case "events":
 			st := time.Now().Add(72 * time.Hour)
 			if req.StartDate != "" {
@@ -1577,9 +1589,9 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 				tag = "Meetup"
 			}
 			_, err = s.db.Exec(`
-				INSERT INTO trigamedev.events (title, description, location, start_time, cover_image_url, tag)
-				VALUES ($1, $2, $3, $4, $5, $6)
-			`, req.Title, req.Description, loc, st, req.ImageURL, tag)
+				INSERT INTO trigamedev.events (title, description, location, start_time, cover_image_url, tag, created_by)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
+			`, req.Title, req.Description, loc, st, req.ImageURL, tag, u.ID)
 		case "jams":
 			st := time.Now()
 			et := time.Now().Add(48 * time.Hour)
@@ -1599,36 +1611,36 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 			}
 			winnersBytes, _ := json.Marshal(req.Winners)
 			_, err = s.db.Exec(`
-				INSERT INTO trigamedev.game_jams (title, month_label, theme, description, itch_url, cover_image_url, start_date, end_date, status, participants_count, submissions_count, jam_type, winners_json)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-			`, req.Title, req.Tag, req.Subtitle, req.Description, req.URL, req.ImageURL, st, et, status, req.ParticipantsCount, req.SubmissionsCount, jamType, string(winnersBytes))
+				INSERT INTO trigamedev.game_jams (title, month_label, theme, description, itch_url, cover_image_url, start_date, end_date, status, participants_count, submissions_count, jam_type, winners_json, created_by)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			`, req.Title, req.Tag, req.Subtitle, req.Description, req.URL, req.ImageURL, st, et, status, req.ParticipantsCount, req.SubmissionsCount, jamType, string(winnersBytes), u.ID)
 		case "showcase":
 			srcURL := req.SecondaryURL
 			if srcURL == "" {
 				srcURL = req.URL
 			}
 			_, err = s.db.Exec(`
-				INSERT INTO trigamedev.showcase (title, developer_name, description, thumbnail_url, play_url, source_url, engine, featured)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
-			`, req.Title, req.Subtitle, req.Description, req.ImageURL, req.URL, srcURL, req.Tag)
+				INSERT INTO trigamedev.showcase (title, developer_name, description, thumbnail_url, play_url, source_url, engine, featured, created_by)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8)
+			`, req.Title, req.Subtitle, req.Description, req.ImageURL, req.URL, srcURL, req.Tag, u.ID)
 		case "gallery":
 			evLabel := req.Tag
 			if evLabel == "" {
 				evLabel = "Community Photo"
 			}
 			_, err = s.db.Exec(`
-				INSERT INTO trigamedev.gallery (title, caption, image_url, event_label, uploaded_by)
-				VALUES ($1, $2, $3, $4, $5)
-			`, req.Title, req.Description, req.ImageURL, evLabel, u.DisplayName)
+				INSERT INTO trigamedev.gallery (title, caption, image_url, event_label, uploaded_by, created_by)
+				VALUES ($1, $2, $3, $4, $5, $6)
+			`, req.Title, req.Description, req.ImageURL, evLabel, u.DisplayName, u.ID)
 		case "videos":
 			speaker := req.Subtitle
 			if speaker == "" {
 				speaker = u.DisplayName
 			}
 			_, err = s.db.Exec(`
-				INSERT INTO trigamedev.videos (title, description, video_url, thumbnail_url, speaker_name, duration)
-				VALUES ($1, $2, $3, $4, $5, $6)
-			`, req.Title, req.Description, req.URL, req.ImageURL, speaker, req.Tag)
+				INSERT INTO trigamedev.videos (title, description, video_url, thumbnail_url, speaker_name, duration, created_by)
+				VALUES ($1, $2, $3, $4, $5, $6, $7)
+			`, req.Title, req.Description, req.URL, req.ImageURL, speaker, req.Tag, u.ID)
 		default:
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Unknown post type"})
 			return

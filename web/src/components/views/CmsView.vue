@@ -1,5 +1,6 @@
 <script setup>
-import { RefreshCw, Terminal, Upload, Trophy } from 'lucide-vue-next'
+import { ref, computed } from 'vue'
+import { RefreshCw, Terminal, Upload, Trophy, ChevronDown, ChevronRight } from 'lucide-vue-next'
 import { useTriGameDevStore } from '../../composables/useTriGameDevStore'
 import { useCms } from '../../composables/useCms'
 
@@ -15,6 +16,49 @@ const {
   deleteCMSItem,
   triggerDiscordSync
 } = useCms()
+
+const onlyMyPosts = ref(false)
+const openPostCategories = ref({})
+
+function isAuthoredByUser(item) {
+  const u = currentUser.value
+  if (!u) return false
+  if (item.created_by && item.created_by === u.id) return true
+  const disp = (u.display_name || '').toLowerCase()
+  const uname = (u.username || '').toLowerCase()
+  const fields = [item.author_name, item.uploaded_by, item.developer_name, item.speaker_name]
+  return fields.some(val => {
+    if (!val) return false
+    const low = val.toLowerCase()
+    return (disp && low.includes(disp)) || (uname && low.includes(uname))
+  })
+}
+
+const postCategories = computed(() => {
+  const raw = [
+    { key: 'jams', label: 'Jams', items: overview.value.jams || [] },
+    { key: 'showcase', label: 'Games', items: overview.value.showcase || [] },
+    { key: 'events', label: 'Events', items: overview.value.events || [] },
+    { key: 'news', label: 'Announcements', items: overview.value.news || [] },
+    { key: 'gallery', label: 'Photos', items: overview.value.gallery || [] },
+    { key: 'videos', label: 'Videos', items: overview.value.videos || [] }
+  ]
+  return raw.map(cat => ({
+    ...cat,
+    items: onlyMyPosts.value ? cat.items.filter(isAuthoredByUser) : cat.items
+  }))
+})
+
+function isCategoryOpen(key) {
+  return !!openPostCategories.value[key]
+}
+
+function toggleCategory(key) {
+  openPostCategories.value = {
+    ...openPostCategories.value,
+    [key]: !openPostCategories.value[key]
+  }
+}
 </script>
 
 <template>
@@ -406,94 +450,76 @@ const {
         </button>
       </div>
 
-      <!-- Manage Live Entries -->
+      <!-- Posts (Category Accordions, Default Collapsed) -->
       <div class="bg-[#121215] p-6 border border-zinc-800 flex flex-col gap-4">
-        <h2 class="text-base font-bold text-white uppercase tracking-wider border-b border-zinc-800 pb-2">
-          Manage Live Entries
-        </h2>
-        <div class="flex flex-col gap-2.5 max-h-[580px] overflow-y-auto pr-1">
-          <div
-            v-for="item in overview.jams"
-            :key="'j-' + item.id"
-            class="p-3 bg-[#09090b] border border-zinc-800 flex items-center justify-between gap-2 text-xs"
-          >
-            <div class="truncate">
-              <span class="font-mono text-[#ef4444] mr-2">[JAM]</span>
-              <span class="text-white font-semibold">{{ item.title }}</span>
-            </div>
-            <button @click="deleteCMSItem('jams', item.id)" class="text-[#ef4444] font-mono uppercase hover:underline shrink-0 cursor-pointer">
-              Delete
-            </button>
-          </div>
+        <div class="flex items-center justify-between border-b border-zinc-800 pb-3">
+          <h2 class="text-base font-bold text-white uppercase tracking-wider">
+            Posts
+          </h2>
+          <label class="flex items-center gap-2 text-xs font-mono uppercase text-zinc-400 hover:text-white cursor-pointer select-none">
+            <input
+              v-model="onlyMyPosts"
+              type="checkbox"
+              class="accent-[#ef4444] w-3.5 h-3.5 cursor-pointer"
+            />
+            <span>Authored by me</span>
+          </label>
+        </div>
 
+        <div class="flex flex-col gap-2.5">
           <div
-            v-for="item in overview.showcase"
-            :key="'s-' + item.id"
-            class="p-3 bg-[#09090b] border border-zinc-800 flex items-center justify-between gap-2 text-xs"
+            v-for="cat in postCategories"
+            :key="cat.key"
+            class="bg-[#09090b] border border-zinc-800"
           >
-            <div class="truncate">
-              <span class="font-mono text-zinc-400 mr-2">[GAME]</span>
-              <span class="text-white font-semibold">{{ item.title }}</span>
-            </div>
-            <button @click="deleteCMSItem('showcase', item.id)" class="text-[#ef4444] font-mono uppercase hover:underline shrink-0 cursor-pointer">
-              Delete
+            <button
+              type="button"
+              @click="toggleCategory(cat.key)"
+              class="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-zinc-900/70 transition cursor-pointer"
+              :class="isCategoryOpen(cat.key) ? 'border-b border-zinc-800 bg-zinc-900/40' : ''"
+            >
+              <div class="flex items-center gap-2.5">
+                <ChevronDown
+                  v-if="isCategoryOpen(cat.key)"
+                  class="w-4 h-4 text-[#ef4444] shrink-0"
+                />
+                <ChevronRight
+                  v-else
+                  class="w-4 h-4 text-zinc-400 shrink-0"
+                />
+                <span class="font-bold text-sm text-white uppercase tracking-wider">
+                  {{ cat.label }}
+                </span>
+              </div>
+              <span class="px-2 py-0.5 bg-[#121215] border border-zinc-700 text-[11px] font-mono text-zinc-300">
+                {{ cat.items.length }}
+              </span>
             </button>
-          </div>
 
-          <div
-            v-for="item in overview.events"
-            :key="'e-' + item.id"
-            class="p-3 bg-[#09090b] border border-zinc-800 flex items-center justify-between gap-2 text-xs"
-          >
-            <div class="truncate">
-              <span class="font-mono text-zinc-400 mr-2">[EVENT]</span>
-              <span class="text-white font-semibold">{{ item.title }}</span>
+            <div
+              v-if="isCategoryOpen(cat.key)"
+              class="p-3 flex flex-col gap-2 max-h-72 overflow-y-auto"
+            >
+              <div
+                v-if="cat.items.length === 0"
+                class="py-3 text-center text-xs font-mono uppercase text-zinc-500"
+              >
+                No posts in this category.
+              </div>
+              <div
+                v-for="item in cat.items"
+                :key="cat.key + '-' + item.id"
+                class="p-2.5 bg-[#121215] border border-zinc-800 flex items-center justify-between gap-2 text-xs"
+              >
+                <span class="text-white font-semibold truncate">{{ item.title }}</span>
+                <button
+                  @click="deleteCMSItem(cat.key, item.id)"
+                  class="text-[#ef4444] font-mono uppercase hover:underline shrink-0 cursor-pointer"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
-            <button @click="deleteCMSItem('events', item.id)" class="text-[#ef4444] font-mono uppercase hover:underline shrink-0 cursor-pointer">
-              Delete
-            </button>
-          </div>
-
-          <div
-            v-for="item in overview.news"
-            :key="'n-' + item.id"
-            class="p-3 bg-[#09090b] border border-zinc-800 flex items-center justify-between gap-2 text-xs"
-          >
-            <div class="truncate">
-              <span class="font-mono text-zinc-400 mr-2">[NEWS]</span>
-              <span class="text-white font-semibold">{{ item.title }}</span>
-            </div>
-            <button @click="deleteCMSItem('news', item.id)" class="text-[#ef4444] font-mono uppercase hover:underline shrink-0 cursor-pointer">
-              Delete
-            </button>
-          </div>
-
-          <div
-            v-for="item in overview.gallery"
-            :key="'g-' + item.id"
-            class="p-3 bg-[#09090b] border border-zinc-800 flex items-center justify-between gap-2 text-xs"
-          >
-            <div class="truncate">
-              <span class="font-mono text-zinc-400 mr-2">[PHOTO]</span>
-              <span class="text-white font-semibold">{{ item.title }}</span>
-            </div>
-            <button @click="deleteCMSItem('gallery', item.id)" class="text-[#ef4444] font-mono uppercase hover:underline shrink-0 cursor-pointer">
-              Delete
-            </button>
-          </div>
-
-          <div
-            v-for="item in overview.videos"
-            :key="'v-' + item.id"
-            class="p-3 bg-[#09090b] border border-zinc-800 flex items-center justify-between gap-2 text-xs"
-          >
-            <div class="truncate">
-              <span class="font-mono text-zinc-400 mr-2">[VIDEO]</span>
-              <span class="text-white font-semibold">{{ item.title }}</span>
-            </div>
-            <button @click="deleteCMSItem('videos', item.id)" class="text-[#ef4444] font-mono uppercase hover:underline shrink-0 cursor-pointer">
-              Delete
-            </button>
           </div>
         </div>
       </div>
