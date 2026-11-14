@@ -60,23 +60,20 @@ const {
           </div>
         </div>
 
-        <!-- One-Click Itch.io Scraper Box (Only for Jams and Games) -->
+        <!-- Game Importer (Jams and Games) -->
         <div
           v-if="cmsForm.section === 'jams' || cmsForm.section === 'showcase'"
           class="p-4 bg-[#09090b] border border-zinc-700 flex flex-col gap-2.5"
         >
-          <div class="flex items-center justify-between">
-            <label class="text-xs font-mono uppercase text-white flex items-center gap-1.5">
-              <Terminal class="w-3.5 h-3.5 text-[#ef4444]" />
-              <span>Itch.io {{ cmsForm.section === 'jams' ? 'Jam' : 'Game' }} Importer</span>
-            </label>
-            <span class="text-[11px] font-mono text-zinc-500">AUTO-FILLS INFO &amp; WINNERS</span>
-          </div>
+          <label class="text-xs font-mono uppercase text-white flex items-center gap-1.5">
+            <Terminal class="w-3.5 h-3.5 text-[#ef4444]" />
+            <span>Game Importer</span>
+          </label>
           <div class="flex flex-col sm:flex-row gap-2">
             <input
               v-model="cmsForm.url"
               type="url"
-              :placeholder="cmsForm.section === 'jams' ? 'https://itch.io/jam/...' : 'https://creator.itch.io/game'"
+              placeholder="https://..."
               class="flex-1 px-3.5 py-2 bg-[#121215] border border-zinc-700 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-white"
             />
             <button
@@ -85,7 +82,7 @@ const {
               :disabled="scrapingItch"
               class="px-4 py-2 bg-white hover:bg-zinc-200 disabled:opacity-50 text-black text-xs font-bold uppercase tracking-wider whitespace-nowrap cursor-pointer transition"
             >
-              {{ scrapingItch ? 'Scraping...' : 'Auto-Fill from Itch.io' }}
+              {{ scrapingItch ? 'Importing...' : 'Import' }}
             </button>
           </div>
         </div>

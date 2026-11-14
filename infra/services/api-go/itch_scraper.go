@@ -26,7 +26,8 @@ type ItchJamWinner struct {
 }
 
 type ItchScrapedData struct {
-	Kind              string          `json:"kind"` // "jam" or "game"
+	Kind              string          `json:"kind"`     // "jam" or "game"
+	Platform          string          `json:"platform"` // "Steam" or "Itch.io"
 	URL               string          `json:"url"`
 	Title             string          `json:"title"`
 	Subtitle          string          `json:"subtitle"`           // Theme (for jam) or Developer Name(s) (for game)
@@ -43,15 +44,16 @@ type ItchScrapedData struct {
 }
 
 var (
-	reMetaProp  = regexp.MustCompile(`(?i)<meta[^>]+(?:property|name)=["']([^"']+)["'][^>]+content=["']([^"']*)["']`)
-	reMetaProp2 = regexp.MustCompile(`(?i)<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']([^"']+)["']`)
-	reViewJam   = regexp.MustCompile(`ViewJam\([^,]+,\s*(\{[^}]+\})\)`)
-	reStatBox   = regexp.MustCompile(`(?s)<div class="stat_box">.*?<div class="stat_value">([0-9,]+)</div><div class="stat_label">([^<]+)</div>`)
-	reJamBody   = regexp.MustCompile(`(?s)<div class="jam_content[^"]*">(.*?)</div>`)
-	reTableRow  = regexp.MustCompile(`(?s)<tr><td>([^<]+)</td><td>(.*?)</td></tr>`)
-	reAnchor    = regexp.MustCompile(`(?s)<a[^>]*>(.*?)</a>`)
-	reHref      = regexp.MustCompile(`(?i)href=["']([^"']+)["']`)
-	reHTMLTags  = regexp.MustCompile(`<[^>]+>`)
+	reMetaProp   = regexp.MustCompile(`(?i)<meta[^>]+(?:property|name)=["']([^"']+)["'][^>]+content=["']([^"']*)["']`)
+	reMetaProp2  = regexp.MustCompile(`(?i)<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']([^"']+)["']`)
+	reViewJam    = regexp.MustCompile(`ViewJam\([^,]+,\s*(\{[^}]+\})\)`)
+	reStatBox    = regexp.MustCompile(`(?s)<div class="stat_box">.*?<div class="stat_value">([0-9,]+)</div><div class="stat_label">([^<]+)</div>`)
+	reJamBody    = regexp.MustCompile(`(?s)<div class="jam_content[^"]*">(.*?)</div>`)
+	reTableRow   = regexp.MustCompile(`(?s)<tr><td>([^<]+)</td><td>(.*?)</td></tr>`)
+	reAnchor     = regexp.MustCompile(`(?s)<a[^>]*>(.*?)</a>`)
+	reHref       = regexp.MustCompile(`(?i)href=["']([^"']+)["']`)
+	reHTMLTags   = regexp.MustCompile(`<[^>]+>`)
+	reSteamAppID = regexp.MustCompile(`(?i)/app/(\d+)`)
 )
 
 func extractMetaMap(rawHTML string) map[string]string {
@@ -108,12 +110,26 @@ func fetchURLString(targetURL string) (string, error) {
 }
 
 func scrapeItchURL(rawURL string) (*ItchScrapedData, error) {
-	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed != "" && !strings.HasPrefix(strings.ToLower(trimmed), "http://") && !strings.HasPrefix(strings.ToLower(trimmed), "https://") {
+		trimmed = "https://" + trimmed
+	}
+	parsed, err := url.Parse(trimmed)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return nil, fmt.Errorf("invalid URL")
 	}
-	if !strings.HasSuffix(strings.ToLower(parsed.Host), "itch.io") {
-		return nil, fmt.Errorf("URL must be an itch.io jam or game link")
+
+	host := strings.ToLower(parsed.Host)
+	if strings.Contains(host, "steampowered.com") || strings.Contains(host, "steamcommunity.com") {
+		m := reSteamAppID.FindStringSubmatch(parsed.Path)
+		if len(m) < 2 {
+			return nil, fmt.Errorf("could not find Steam App ID in URL")
+		}
+		return scrapeSteamGame(m[1])
+	}
+
+	if !strings.HasSuffix(host, "itch.io") {
+		return nil, fmt.Errorf("unsupported URL (provide a Steam or Itch.io link)")
 	}
 
 	cleanURL := fmt.Sprintf("https://%s%s", parsed.Host, strings.TrimRight(parsed.Path, "/"))
@@ -123,6 +139,81 @@ func scrapeItchURL(rawURL string) (*ItchScrapedData, error) {
 		return scrapeItchJam(cleanURL)
 	}
 	return scrapeItchGame(cleanURL)
+}
+
+func scrapeSteamGame(appID string) (*ItchScrapedData, error) {
+	cleanURL := fmt.Sprintf("https://store.steampowered.com/app/%s/", appID)
+	apiURL := fmt.Sprintf("https://store.steampowered.com/api/appdetails?appids=%s&l=english", appID)
+
+	out := &ItchScrapedData{
+		Kind:         "game",
+		Platform:     "Steam",
+		URL:          cleanURL,
+		SecondaryURL: cleanURL,
+		Tag:          "Steam",
+	}
+
+	if bodyStr, err := fetchURLString(apiURL); err == nil {
+		var respMap map[string]struct {
+			Success bool `json:"success"`
+			Data    struct {
+				Name             string   `json:"name"`
+				ShortDescription string   `json:"short_description"`
+				HeaderImage      string   `json:"header_image"`
+				CapsuleImage     string   `json:"capsule_image"`
+				Website          string   `json:"website"`
+				Developers       []string `json:"developers"`
+				Publishers       []string `json:"publishers"`
+				Genres           []struct {
+					Description string `json:"description"`
+				} `json:"genres"`
+			} `json:"data"`
+		}
+		if json.Unmarshal([]byte(bodyStr), &respMap) == nil {
+			if entry, ok := respMap[appID]; ok && entry.Success {
+				d := entry.Data
+				out.Title = html.UnescapeString(strings.TrimSpace(d.Name))
+				out.Description = cleanHTMLText(d.ShortDescription)
+				if d.HeaderImage != "" {
+					out.ImageURL = d.HeaderImage
+				} else if d.CapsuleImage != "" {
+					out.ImageURL = d.CapsuleImage
+				}
+				if len(d.Developers) > 0 {
+					out.Subtitle = strings.Join(d.Developers, ", ")
+				} else if len(d.Publishers) > 0 {
+					out.Subtitle = strings.Join(d.Publishers, ", ")
+				}
+				if d.Website != "" {
+					out.SecondaryURL = d.Website
+				}
+				genres := []string{}
+				for _, g := range d.Genres {
+					if strings.TrimSpace(g.Description) != "" && len(genres) < 2 {
+						genres = append(genres, strings.TrimSpace(g.Description))
+					}
+				}
+				if len(genres) > 0 {
+					out.Tag = strings.Join(genres, ", ")
+				}
+				return out, nil
+			}
+		}
+	}
+
+	// Fallback to HTML meta tags if appdetails did not return data
+	rawHTML, err := fetchURLString(cleanURL)
+	if err != nil {
+		return nil, err
+	}
+	meta := extractMetaMap(rawHTML)
+	out.Title = strings.TrimSuffix(meta["og:title"], " on Steam")
+	out.Description = meta["og:description"]
+	out.ImageURL = meta["og:image"]
+	if out.Title == "" {
+		return nil, fmt.Errorf("could not extract Steam game details")
+	}
+	return out, nil
 }
 
 func scrapeItchJamWinners(jamID int) []ItchJamWinner {
@@ -236,6 +327,7 @@ func scrapeItchJam(jamURL string) (*ItchScrapedData, error) {
 
 	out := &ItchScrapedData{
 		Kind:         "jam",
+		Platform:     "Itch.io",
 		URL:          jamURL,
 		SecondaryURL: jamURL,
 		Title:        meta["og:title"],
@@ -348,6 +440,7 @@ func scrapeItchGame(gameURL string) (*ItchScrapedData, error) {
 
 	out := &ItchScrapedData{
 		Kind:         "game",
+		Platform:     "Itch.io",
 		URL:          gameURL,
 		SecondaryURL: gameURL,
 		Title:        meta["og:title"],

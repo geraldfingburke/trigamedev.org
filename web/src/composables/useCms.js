@@ -25,19 +25,20 @@ export function useCms() {
   const { showToast, apiFetch, uploadImageFile, loadAllData } = useTriGameDevStore()
 
   async function autofillFromItch() {
-    if (!cmsForm.value.url || !cmsForm.value.url.includes('itch.io')) {
-      showToast('Please paste an itch.io Jam or Game URL first.')
+    const rawUrl = (cmsForm.value.url || '').trim()
+    if (!rawUrl) {
+      showToast('Paste a game or jam URL first.')
       return
     }
     scrapingItch.value = true
     try {
-      const data = await apiFetch(`/tgd/cms/itch-scrape?url=${encodeURIComponent(cmsForm.value.url)}`)
+      const data = await apiFetch(`/tgd/cms/itch-scrape?url=${encodeURIComponent(rawUrl)}`)
       cmsForm.value.section = data.kind === 'jam' ? 'jams' : 'showcase'
       cmsForm.value.title = data.title || ''
       cmsForm.value.subtitle = data.subtitle || ''
       cmsForm.value.description = data.description || ''
       cmsForm.value.tag = data.tag || ''
-      cmsForm.value.url = data.url || cmsForm.value.url
+      cmsForm.value.url = data.url || rawUrl
       cmsForm.value.secondary_url = data.secondary_url || ''
       cmsForm.value.image_url = data.image_url || ''
       cmsForm.value.start_date = data.start_date || ''
@@ -46,9 +47,9 @@ export function useCms() {
       cmsForm.value.participants_count = data.participants_count || 0
       cmsForm.value.submissions_count = data.submissions_count || 0
       cmsForm.value.winners = data.winners || []
-      showToast(`Scraped ${data.kind.toUpperCase()}: "${data.title}" (${cmsForm.value.winners.length} ranked winners)`)
+      showToast(`Imported "${data.title}" (${data.platform || 'Web'})`)
     } catch (e) {
-      showToast(`Scraper error: ${e.message}`)
+      showToast(`Import error: ${e.message}`)
     } finally {
       scrapingItch.value = false
     }
@@ -79,8 +80,8 @@ export function useCms() {
   }
 
   async function publishCMSItem() {
-    if (!cmsForm.value.title && !cmsForm.value.url.includes('itch.io')) {
-      showToast('Please enter a title (or an itch.io URL).')
+    if (!cmsForm.value.title && !cmsForm.value.url) {
+      showToast('Please enter a title or URL.')
       return
     }
     try {

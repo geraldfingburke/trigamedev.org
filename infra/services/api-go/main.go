@@ -1498,8 +1498,9 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Auto-scrape from itch.io if a Jam or Showcase item is submitted with an itch.io URL and missing fields
-		if (req.Section == "jams" || req.Section == "showcase") && strings.Contains(strings.ToLower(req.URL), "itch.io") && (req.Title == "" || len(req.Winners) == 0) {
+		// Auto-scrape if a Jam or Showcase item is submitted with a Steam or Itch.io URL and missing fields
+		lowURL := strings.ToLower(req.URL)
+		if (req.Section == "jams" || req.Section == "showcase") && (strings.Contains(lowURL, "itch.io") || strings.Contains(lowURL, "steampowered.com") || strings.Contains(lowURL, "steamcommunity.com")) && (req.Title == "" || (req.Section == "jams" && len(req.Winners) == 0)) {
 			if scraped, err := scrapeItchURL(req.URL); err == nil {
 				if req.Title == "" {
 					req.Title = scraped.Title
