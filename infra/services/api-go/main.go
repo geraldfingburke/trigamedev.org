@@ -655,6 +655,9 @@ func (s *Server) syncDiscordEventsFromGuild(force bool) int {
 		EntityMetadata struct {
 			Location string `json:"location"`
 		} `json:"entity_metadata"`
+		RecurrenceRule *struct {
+			Start time.Time `json:"start"`
+		} `json:"recurrence_rule"`
 	}
 	if json.NewDecoder(resp.Body).Decode(&dEvents) != nil {
 		return 0
@@ -683,6 +686,15 @@ func (s *Server) syncDiscordEventsFromGuild(force bool) int {
 		`, ev.ID, ev.Name, ev.Description, loc, ev.ScheduledStart, cover, ev.UserCount)
 		if err == nil {
 			synced++
+		}
+		// If this is a recurring Discord event whose initial recurrence start was in the past, preserve that past occurrence too
+		if ev.RecurrenceRule != nil && !ev.RecurrenceRule.Start.IsZero() && ev.RecurrenceRule.Start.Before(ev.ScheduledStart) && ev.RecurrenceRule.Start.Before(time.Now()) {
+			pastID := ev.ID + "_" + ev.RecurrenceRule.Start.UTC().Format("20060102")
+			_, _ = s.db.Exec(`
+				INSERT INTO trigamedev.events (discord_event_id, title, description, location, start_time, cover_image_url, rsvp_count, tag)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, 'Discord Event')
+				ON CONFLICT (discord_event_id) DO NOTHING
+			`, pastID, ev.Name, ev.Description, loc, ev.RecurrenceRule.Start, cover, ev.UserCount)
 		}
 	}
 	return synced

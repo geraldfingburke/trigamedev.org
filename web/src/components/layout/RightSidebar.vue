@@ -26,7 +26,7 @@ const { currentUser, staySignedIn, overview, loginWithDiscord, logout } = useTri
                   :key="role"
                   class="px-1.5 py-0.5 text-[10px] font-mono uppercase border"
                   :class="
-                    role === 'OG'
+                    role === 'OG' || role === 'OGs'
                       ? 'bg-[#dc2626]/20 border-[#dc2626] text-[#ef4444] font-bold'
                       : 'bg-zinc-900 border-zinc-700 text-zinc-300'
                   "
