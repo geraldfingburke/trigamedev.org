@@ -155,6 +155,20 @@ ALTER TABLE trigamedev.showcase ADD COLUMN IF NOT EXISTS action_label VARCHAR(60
 ALTER TABLE trigamedev.gallery ADD COLUMN IF NOT EXISTS created_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL;
 ALTER TABLE trigamedev.videos ADD COLUMN IF NOT EXISTS created_by INT REFERENCES trigamedev.users(id) ON DELETE SET NULL;
 
+ALTER TABLE trigamedev.game_jams ADD COLUMN IF NOT EXISTS discord_announced BOOLEAN DEFAULT FALSE;
+ALTER TABLE trigamedev.events ADD COLUMN IF NOT EXISTS discord_announced BOOLEAN DEFAULT FALSE;
+ALTER TABLE trigamedev.news ADD COLUMN IF NOT EXISTS discord_announced BOOLEAN DEFAULT FALSE;
+ALTER TABLE trigamedev.showcase ADD COLUMN IF NOT EXISTS discord_announced BOOLEAN DEFAULT FALSE;
+ALTER TABLE trigamedev.gallery ADD COLUMN IF NOT EXISTS discord_announced BOOLEAN DEFAULT FALSE;
+ALTER TABLE trigamedev.videos ADD COLUMN IF NOT EXISTS discord_announced BOOLEAN DEFAULT FALSE;
+ALTER TABLE trigamedev.key_pools ADD COLUMN IF NOT EXISTS discord_announced BOOLEAN DEFAULT FALSE;
+ALTER TABLE trigamedev.ebooks ADD COLUMN IF NOT EXISTS discord_announced BOOLEAN DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS trigamedev.bot_state (
+    key VARCHAR(64) PRIMARY KEY,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS trigamedev.user_section_reads (
     user_id INT NOT NULL REFERENCES trigamedev.users(id) ON DELETE CASCADE,
     section VARCHAR(40) NOT NULL,
