@@ -30,7 +30,9 @@ func slugify(raw string) string {
 	return s
 }
 
-// Default Discord channel IDs in the TriGameDev Guild (336559457242972160)
+// Discord channel IDs in the TriGameDev Guild (336559457242972160)
+const channelSubsID = "1571838890778566716" // #channel-subs
+
 var defaultSectionChannels = map[string]string{
 	"jams":     "1480332771166654485", // jams / monthly-game-jam-announcements
 	"events":   "1571142618363076619", // admin / news
@@ -42,33 +44,26 @@ var defaultSectionChannels = map[string]string{
 	"ebooks":   "1571143288935944315", // random / free-books
 }
 
+// Opt-in notification roles in the TriGameDev Guild
+const (
+	roleNewGamesID = "1571839186192048269" // Tell Me About New Games (release-feed & key vault)
+	roleNewBooksID = "1571839345973788782" // Tell Me About New Books (free-books)
+	roleNewJamsID  = "1571839429436379236" // Tell Me About New Jams (monthly-game-jam-announcements)
+)
+
 type notifRoleSpec struct {
-	Key         string
-	RoleName    string
-	ButtonLabel string
+	Key      string
+	RoleID   string
+	RoleName string
 }
 
 var notificationRoleSpecs = []notifRoleSpec{
-	{Key: "jams", RoleName: "Jam Notifications", ButtonLabel: "Jams"},
-	{Key: "events", RoleName: "Event Notifications", ButtonLabel: "Events"},
-	{Key: "showcase", RoleName: "Game Release Notifications", ButtonLabel: "Games by Our People"},
-	{Key: "media", RoleName: "Gallery & Video Notifications", ButtonLabel: "Gallery & Video"},
-	{Key: "keys", RoleName: "Free Game Key Notifications", ButtonLabel: "Key Vault (Free Games)"},
-	{Key: "ebooks", RoleName: "Free Book Notifications", ButtonLabel: "Ebook Library (Free Books)"},
+	{Key: "games", RoleID: roleNewGamesID, RoleName: "Tell Me About New Games"},
+	{Key: "books", RoleID: roleNewBooksID, RoleName: "Tell Me About New Books"},
+	{Key: "jams", RoleID: roleNewJamsID, RoleName: "Tell Me About New Jams"},
 }
 
-var (
-	notifRolesMu  sync.RWMutex
-	notifRoleIDs  = map[string]string{} // key -> Discord Role ID
-	botSetupReady = false
-)
-
-func sectionToRoleKey(section string) string {
-	if section == "gallery" || section == "videos" {
-		return "media"
-	}
-	return section
-}
+var botSetupReady = false
 
 type discordEmbed struct {
 	Title       string              `json:"title,omitempty"`
@@ -140,37 +135,37 @@ func (s *Server) discordAPIRequest(method, path string, body any) ([]byte, int, 
 }
 
 // Resolves the mention prefix and allowed_mentions object for a given section:
-// - "news" uses @everyone
-// - All other sections use their opt-in notification Role (<@&ROLE_ID>)
+// - "news" (and "events" in admin/news) uses @everyone
+// - "showcase" and "keys" use <@&1571839186192048269> (Tell Me About New Games)
+// - "ebooks" uses <@&1571839345973788782> (Tell Me About New Books)
+// - "jams" uses <@&1571839429436379236> (Tell Me About New Jams)
+// - "gallery" and "videos" use NO @ directive
 func (s *Server) buildMentionForSection(section string) (string, map[string]any) {
-	if section == "news" {
+	switch section {
+	case "news", "events":
 		return "@everyone", map[string]any{
 			"parse": []string{"everyone"},
 		}
-	}
-
-	roleKey := sectionToRoleKey(section)
-	notifRolesMu.RLock()
-	roleID := notifRoleIDs[roleKey]
-	notifRolesMu.RUnlock()
-
-	if roleID == "" {
-		// Try refreshing role map from guild
-		_ = s.syncNotificationRolesOnly()
-		notifRolesMu.RLock()
-		roleID = notifRoleIDs[roleKey]
-		notifRolesMu.RUnlock()
-	}
-
-	if roleID != "" {
-		return fmt.Sprintf("<@&%s>", roleID), map[string]any{
-			"roles": []string{roleID},
+	case "showcase", "keys":
+		return fmt.Sprintf("<@&%s>", roleNewGamesID), map[string]any{
+			"roles": []string{roleNewGamesID},
 		}
-	}
-
-	// Fallback if role has not been created yet
-	return "@here", map[string]any{
-		"parse": []string{"everyone"},
+	case "ebooks":
+		return fmt.Sprintf("<@&%s>", roleNewBooksID), map[string]any{
+			"roles": []string{roleNewBooksID},
+		}
+	case "jams":
+		return fmt.Sprintf("<@&%s>", roleNewJamsID), map[string]any{
+			"roles": []string{roleNewJamsID},
+		}
+	case "gallery", "videos":
+		return "", map[string]any{
+			"parse": []string{},
+		}
+	default:
+		return "", map[string]any{
+			"parse": []string{},
+		}
 	}
 }
 
@@ -351,6 +346,7 @@ func (s *Server) announceEntryByID(section string, id int) error {
 			return err
 		}
 		siteURL := fmt.Sprintf("https://trigamedev.org/media/%s", slugify(title))
+		fullImg := resolvePublicURL(imgURL)
 		emb := &discordEmbed{
 			Title:       title,
 			URL:         siteURL,
@@ -361,10 +357,14 @@ func (s *Server) announceEntryByID(section string, id int) error {
 				{Name: "View on TriGameDev", Value: siteURL, Inline: false},
 			},
 		}
-		if img := resolvePublicURL(imgURL); img != "" {
-			emb.Image = &discordEmbedMedia{URL: img}
+		if fullImg != "" {
+			emb.Image = &discordEmbedMedia{URL: fullImg}
 		}
-		if err := s.postToDiscordChannel("gallery", fmt.Sprintf("New photo added to the TriGameDev Gallery: **%s**\n%s", title, siteURL), emb); err != nil {
+		msgText := fmt.Sprintf("**%s** (shared by %s)\n%s", title, uploadedBy, siteURL)
+		if fullImg != "" {
+			msgText = fmt.Sprintf("**%s** (shared by %s)\n%s\n%s", title, uploadedBy, siteURL, fullImg)
+		}
+		if err := s.postToDiscordChannel("gallery", msgText, emb); err != nil {
 			return err
 		}
 		_, _ = s.db.Exec(`UPDATE trigamedev.gallery SET discord_announced = TRUE WHERE id = $1`, id)
@@ -387,13 +387,13 @@ func (s *Server) announceEntryByID(section string, id int) error {
 			Fields: []discordEmbedField{
 				{Name: "Creator", Value: speaker, Inline: true},
 				{Name: "View on TriGameDev", Value: siteURL, Inline: false},
-				{Name: "Direct Video Link", Value: videoURL, Inline: false},
+				{Name: "Video Link", Value: videoURL, Inline: false},
 			},
 		}
 		if img := resolvePublicURL(thumbURL); img != "" {
 			emb.Image = &discordEmbedMedia{URL: img}
 		}
-		if err := s.postToDiscordChannel("videos", fmt.Sprintf("New video posted to TriGameDev: **%s**\n%s", title, siteURL), emb); err != nil {
+		if err := s.postToDiscordChannel("videos", fmt.Sprintf("**%s** by **%s**\n%s\n%s", title, speaker, siteURL, videoURL), emb); err != nil {
 			return err
 		}
 		_, _ = s.db.Exec(`UPDATE trigamedev.videos SET discord_announced = TRUE WHERE id = $1`, id)
@@ -515,97 +515,9 @@ func (s *Server) processSingleCatchupPost(force bool) (string, int, error) {
 	return section, id, nil
 }
 
-// Syncs or creates the 6 opt-in notification roles in the guild
-func (s *Server) syncNotificationRolesOnly() error {
-	guildID := strings.TrimSpace(os.Getenv("DISCORD_GUILD_ID"))
-	if guildID == "" {
-		return fmt.Errorf("DISCORD_GUILD_ID not set")
-	}
-
-	respBytes, status, err := s.discordAPIRequest("GET", fmt.Sprintf("/guilds/%s/roles", guildID), nil)
-	if err != nil || status != 200 {
-		return fmt.Errorf("failed to list guild roles (status %d)", status)
-	}
-
-	var existingRoles []struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(respBytes, &existingRoles); err != nil {
-		return err
-	}
-
-	byName := map[string]string{}
-	for _, r := range existingRoles {
-		byName[strings.ToLower(strings.TrimSpace(r.Name))] = r.ID
-	}
-
-	notifRolesMu.Lock()
-	defer notifRolesMu.Unlock()
-
-	for _, spec := range notificationRoleSpecs {
-		if id, ok := byName[strings.ToLower(spec.RoleName)]; ok && id != "" {
-			notifRoleIDs[spec.Key] = id
-			continue
-		}
-		// Try creating the role in the guild
-		createBytes, cStatus, cErr := s.discordAPIRequest("POST", fmt.Sprintf("/guilds/%s/roles", guildID), map[string]any{
-			"name":        spec.RoleName,
-			"color":       0xEF4444,
-			"mentionable": true,
-		})
-		if cErr == nil && (cStatus == 200 || cStatus == 201) {
-			var created struct {
-				ID string `json:"id"`
-			}
-			if json.Unmarshal(createBytes, &created) == nil && created.ID != "" {
-				notifRoleIDs[spec.Key] = created.ID
-				log.Printf("[Discord Setup] Created notification role %q (%s)", spec.RoleName, created.ID)
-			}
-		} else {
-			return fmt.Errorf("missing permission to create role %q (HTTP %d: %s)", spec.RoleName, cStatus, string(createBytes))
-		}
-	}
-	return nil
-}
-
-// Ensures the 6 notification roles, the locked #notifications channel, and the interactive button post exist
+// Ensures the interactive subscription panel post exists in #channel-subs (1571838890778566716)
 func (s *Server) ensureDiscordNotificationsSetup() (map[string]any, error) {
-	guildID := strings.TrimSpace(os.Getenv("DISCORD_GUILD_ID"))
-	if guildID == "" {
-		return nil, fmt.Errorf("DISCORD_GUILD_ID not configured")
-	}
-
-	if err := s.syncNotificationRolesOnly(); err != nil {
-		return nil, err
-	}
-
-	// Find or create #notifications channel under Admin category (1480333956678287601)
-	chBytes, chStatus, err := s.discordAPIRequest("GET", fmt.Sprintf("/guilds/%s/channels", guildID), nil)
-	if err != nil || chStatus != 200 {
-		return nil, fmt.Errorf("failed to fetch guild channels (status %d)", chStatus)
-	}
-
-	var channels []struct {
-		ID       string `json:"id"`
-		Name     string `json:"name"`
-		Type     int    `json:"type"`
-		ParentID string `json:"parent_id"`
-	}
-	_ = json.Unmarshal(chBytes, &channels)
-
-	notifChannelID := ""
-	adminCatID := "1480333956678287601"
-	for _, ch := range channels {
-		if ch.Type == 4 && strings.EqualFold(ch.Name, "Admin") {
-			adminCatID = ch.ID
-		}
-		if ch.Type == 0 && strings.EqualFold(ch.Name, "notifications") {
-			notifChannelID = ch.ID
-		}
-	}
-
-	// Get bot's own user ID for channel permission overwrite
+	// Get bot's own user ID
 	var botUserID = "1482097872521400582"
 	if meBytes, meStatus, meErr := s.discordAPIRequest("GET", "/users/@me", nil); meErr == nil && meStatus == 200 {
 		var me struct {
@@ -616,51 +528,8 @@ func (s *Server) ensureDiscordNotificationsSetup() (map[string]any, error) {
 		}
 	}
 
-	// Locked channel permission overwrites:
-	// @everyone (id == guildID): allow VIEW_CHANNEL (1024) | READ_MESSAGE_HISTORY (65536) = 66560
-	//                            deny SEND_MESSAGES (2048) | ADD_REACTIONS (64) | CREATE_PUBLIC_THREADS (34359738368) | CREATE_PRIVATE_THREADS (68719476736) = 103079217216
-	// Bot user: allow VIEW_CHANNEL (1024) | SEND_MESSAGES (2048) | EMBED_LINKS (16384) | READ_MESSAGE_HISTORY (65536) = 85056
-	overwrites := []map[string]any{
-		{
-			"id":    guildID,
-			"type":  0, // role (@everyone)
-			"allow": "66560",
-			"deny":  "103079217216",
-		},
-		{
-			"id":    botUserID,
-			"type":  1, // member (bot)
-			"allow": "85056",
-			"deny":  "0",
-		},
-	}
-
-	if notifChannelID == "" {
-		createChBytes, cStatus, cErr := s.discordAPIRequest("POST", fmt.Sprintf("/guilds/%s/channels", guildID), map[string]any{
-			"name":                  "notifications",
-			"type":                  0,
-			"parent_id":             adminCatID,
-			"topic":                 "Opt-in role notifications for TriGameDev.org updates",
-			"permission_overwrites": overwrites,
-		})
-		if cErr != nil || (cStatus != 200 && cStatus != 201) {
-			return nil, fmt.Errorf("missing permission to create #notifications channel (HTTP %d: %s)", cStatus, string(createChBytes))
-		}
-		var createdCh struct {
-			ID string `json:"id"`
-		}
-		_ = json.Unmarshal(createChBytes, &createdCh)
-		notifChannelID = createdCh.ID
-		log.Printf("[Discord Setup] Created locked #notifications channel (%s)", notifChannelID)
-	} else {
-		// Ensure existing #notifications channel is locked
-		_, _, _ = s.discordAPIRequest("PATCH", fmt.Sprintf("/channels/%s", notifChannelID), map[string]any{
-			"permission_overwrites": overwrites,
-		})
-	}
-
-	// Check if our interactive button post already exists in #notifications
-	msgsBytes, mStatus, mErr := s.discordAPIRequest("GET", fmt.Sprintf("/channels/%s/messages?limit=20", notifChannelID), nil)
+	// Check if our interactive button post already exists in #channel-subs
+	msgsBytes, mStatus, mErr := s.discordAPIRequest("GET", fmt.Sprintf("/channels/%s/messages?limit=20", channelSubsID), nil)
 	existingMsgID := ""
 	if mErr == nil && mStatus == 200 {
 		var msgs []struct {
@@ -683,69 +552,55 @@ func (s *Server) ensureDiscordNotificationsSetup() (map[string]any, error) {
 	panelPayload := map[string]any{
 		"embeds": []any{
 			map[string]any{
-				"title":       "TRIGAMEDEV NOTIFICATION SUBSCRIPTIONS",
-				"description": "Select the categories below to subscribe or unsubscribe from notification pings when new posts go live on **TriGameDev.org**.\n\nClicking a button toggles that notification role on your Discord profile.",
+				"title":       "CHANNEL SUBSCRIPTIONS",
+				"description": "Click the buttons below to subscribe or unsubscribe from notification pings when new content is posted on **TriGameDev.org**.",
 				"color":       0xEF4444,
 				"fields": []map[string]any{
-					{"name": "Jams", "value": "`#monthly-game-jam-announcements`", "inline": true},
-					{"name": "Events", "value": "`#news`", "inline": true},
-					{"name": "Games by Our People", "value": "`#release-feed`", "inline": true},
-					{"name": "Gallery & Video", "value": "`#gallery`", "inline": true},
-					{"name": "Key Vault", "value": "`#free-games`", "inline": true},
-					{"name": "Ebook Library", "value": "`#free-books`", "inline": true},
+					{"name": "Tell Me About New Games", "value": "Notifications for `#release-feed` and `#free-games` (Key Vault)", "inline": false},
+					{"name": "Tell Me About New Books", "value": "Notifications for `#free-books` (Ebook Library)", "inline": false},
+					{"name": "Tell Me About New Jams", "value": "Notifications for `#monthly-game-jam-announcements`", "inline": false},
 				},
 				"footer": map[string]any{
-					"text": "TriGameDev.org // Opt-In Role Notifications",
+					"text": "TriGameDev.org",
 				},
 			},
 		},
 		"components": []any{
 			map[string]any{
-				"type": 1, // ActionRow 1
+				"type": 1, // ActionRow
 				"components": []any{
-					map[string]any{"type": 2, "style": 2, "label": "Jams", "custom_id": "tgd_notif:jams"},
-					map[string]any{"type": 2, "style": 2, "label": "Events", "custom_id": "tgd_notif:events"},
-					map[string]any{"type": 2, "style": 2, "label": "Games by Our People", "custom_id": "tgd_notif:showcase"},
-				},
-			},
-			map[string]any{
-				"type": 1, // ActionRow 2
-				"components": []any{
-					map[string]any{"type": 2, "style": 2, "label": "Gallery & Video", "custom_id": "tgd_notif:media"},
-					map[string]any{"type": 2, "style": 2, "label": "Key Vault (Free Games)", "custom_id": "tgd_notif:keys"},
-					map[string]any{"type": 2, "style": 2, "label": "Ebook Library (Free Books)", "custom_id": "tgd_notif:ebooks"},
+					map[string]any{"type": 2, "style": 2, "label": "Tell Me About New Games", "custom_id": "tgd_notif:games"},
+					map[string]any{"type": 2, "style": 2, "label": "Tell Me About New Books", "custom_id": "tgd_notif:books"},
+					map[string]any{"type": 2, "style": 2, "label": "Tell Me About New Jams", "custom_id": "tgd_notif:jams"},
 				},
 			},
 		},
 	}
 
 	if existingMsgID == "" {
-		postBytes, pStatus, pErr := s.discordAPIRequest("POST", fmt.Sprintf("/channels/%s/messages", notifChannelID), panelPayload)
+		postBytes, pStatus, pErr := s.discordAPIRequest("POST", fmt.Sprintf("/channels/%s/messages", channelSubsID), panelPayload)
 		if pErr != nil || (pStatus != 200 && pStatus != 201) {
-			return nil, fmt.Errorf("failed to post subscription panel in #notifications (HTTP %d: %s)", pStatus, string(postBytes))
+			return nil, fmt.Errorf("failed to post subscription panel in #channel-subs (HTTP %d: %s)", pStatus, string(postBytes))
 		}
 		var posted struct {
 			ID string `json:"id"`
 		}
 		_ = json.Unmarshal(postBytes, &posted)
 		existingMsgID = posted.ID
-		log.Printf("[Discord Setup] Posted interactive subscription panel (%s) in #notifications", existingMsgID)
+		log.Printf("[Discord Setup] Posted interactive subscription panel (%s) in #channel-subs", existingMsgID)
 	} else {
-		_, _, _ = s.discordAPIRequest("PATCH", fmt.Sprintf("/channels/%s/messages/%s", notifChannelID, existingMsgID), panelPayload)
+		_, _, _ = s.discordAPIRequest("PATCH", fmt.Sprintf("/channels/%s/messages/%s", channelSubsID, existingMsgID), panelPayload)
 	}
 
 	botSetupReady = true
-	notifRolesMu.RLock()
-	rolesCopy := map[string]string{}
-	for k, v := range notifRoleIDs {
-		rolesCopy[k] = v
-	}
-	notifRolesMu.RUnlock()
-
 	return map[string]any{
-		"notifications_channel_id": notifChannelID,
-		"panel_message_id":         existingMsgID,
-		"roles":                    rolesCopy,
+		"channel_subs_id":  channelSubsID,
+		"panel_message_id": existingMsgID,
+		"roles": map[string]string{
+			"games": roleNewGamesID,
+			"books": roleNewBooksID,
+			"jams":  roleNewJamsID,
+		},
 	}, nil
 }
 
@@ -775,23 +630,14 @@ func (s *Server) handleDiscordComponentInteraction(rawEvent json.RawMessage) {
 	}
 
 	roleKey := strings.TrimPrefix(inter.Data.CustomID, "tgd_notif:")
-	roleName := roleKey
+	roleID := ""
+	roleName := ""
 	for _, spec := range notificationRoleSpecs {
 		if spec.Key == roleKey {
+			roleID = spec.RoleID
 			roleName = spec.RoleName
 			break
 		}
-	}
-
-	notifRolesMu.RLock()
-	roleID := notifRoleIDs[roleKey]
-	notifRolesMu.RUnlock()
-
-	if roleID == "" {
-		_ = s.syncNotificationRolesOnly()
-		notifRolesMu.RLock()
-		roleID = notifRoleIDs[roleKey]
-		notifRolesMu.RUnlock()
 	}
 
 	respondEphemeral := func(msg string) {
@@ -799,13 +645,13 @@ func (s *Server) handleDiscordComponentInteraction(rawEvent json.RawMessage) {
 			"type": 4, // CHANNEL_MESSAGE_WITH_SOURCE
 			"data": map[string]any{
 				"content": msg,
-				"flags":   64, // EPHEMERAL (only visible to the user who clicked)
+				"flags":   64, // EPHEMERAL
 			},
 		})
 	}
 
 	if roleID == "" || inter.GuildID == "" || inter.Member.User.ID == "" {
-		respondEphemeral("Notification role is still being configured by an admin. Please try again shortly.")
+		respondEphemeral("Unknown notification role.")
 		return
 	}
 
@@ -822,18 +668,18 @@ func (s *Server) handleDiscordComponentInteraction(rawEvent json.RawMessage) {
 		respBytes, status, err := s.discordAPIRequest("DELETE", memberRolePath, nil)
 		if err != nil || status >= 300 {
 			log.Printf("[Discord Role Toggle] Failed to remove role %s from %s (HTTP %d: %s)", roleID, inter.Member.User.ID, status, string(respBytes))
-			respondEphemeral("Could not update your role — please ensure the bot's role is positioned above the notification roles in Discord Server Settings.")
+			respondEphemeral("Could not update your role — please ensure the `TGDAuth` role has the **Manage Roles** permission enabled in Discord Server Settings.")
 			return
 		}
-		respondEphemeral(fmt.Sprintf("Unsubscribed from **%s**.", roleName))
+		respondEphemeral(fmt.Sprintf("Removed **%s** — you are unsubscribed.", roleName))
 	} else {
 		respBytes, status, err := s.discordAPIRequest("PUT", memberRolePath, nil)
 		if err != nil || status >= 300 {
 			log.Printf("[Discord Role Toggle] Failed to add role %s to %s (HTTP %d: %s)", roleID, inter.Member.User.ID, status, string(respBytes))
-			respondEphemeral("Could not update your role — please ensure the bot's role is positioned above the notification roles in Discord Server Settings.")
+			respondEphemeral("Could not update your role — please ensure the `TGDAuth` role has the **Manage Roles** permission enabled in Discord Server Settings.")
 			return
 		}
-		respondEphemeral(fmt.Sprintf("Subscribed to **%s**!", roleName))
+		respondEphemeral(fmt.Sprintf("Added **%s** — you are now subscribed!", roleName))
 	}
 }
 
@@ -943,20 +789,19 @@ func (s *Server) runGatewaySession(botToken string) {
 	}
 }
 
-// Background loop that checks every 5 minutes if 6 hours have elapsed since the last catch-up post,
-// and also ensures the #notifications channel and opt-in roles are provisioned once permissions are granted
+// Background loop that posts 1 unannounced entry every 6 hours and ensures the #channel-subs panel is posted
 func (s *Server) startCatchupWorker() {
 	s.startDiscordGateway()
 
 	go func() {
-		time.Sleep(5 * time.Second)
+		time.Sleep(3 * time.Second)
 		if _, err := s.ensureDiscordNotificationsSetup(); err != nil {
 			log.Printf("[Discord Setup Notice] %v", err)
 		}
 		for {
 			if !botSetupReady {
 				if _, err := s.ensureDiscordNotificationsSetup(); err == nil {
-					log.Printf("[Discord Setup] Opt-in roles and locked #notifications channel are now active!")
+					log.Printf("[Discord Setup] #channel-subs panel is now active!")
 				}
 			}
 			if sec, id, err := s.processSingleCatchupPost(false); err != nil {
