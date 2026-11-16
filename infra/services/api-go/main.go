@@ -186,6 +186,7 @@ func (s *Server) ensureMigrations() {
 		`ALTER TABLE trigamedev.key_pools ADD COLUMN IF NOT EXISTS discord_announced BOOLEAN DEFAULT FALSE`,
 		`ALTER TABLE trigamedev.ebooks ADD COLUMN IF NOT EXISTS discord_announced BOOLEAN DEFAULT FALSE`,
 		`UPDATE trigamedev.events SET discord_announced = TRUE WHERE start_time < NOW()`,
+		`UPDATE trigamedev.news SET discord_announced = TRUE`,
 		`CREATE TABLE IF NOT EXISTS trigamedev.bot_state (
 			key VARCHAR(64) PRIMARY KEY,
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -1096,8 +1097,6 @@ func (s *Server) handleKeyPools(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		announceNow := !s.hasUnannouncedEntries()
-
 		tx, err := s.db.Begin()
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -1115,9 +1114,9 @@ func (s *Server) handleKeyPools(w http.ResponseWriter, r *http.Request) {
 			}
 			err = tx.QueryRow(`
 				INSERT INTO trigamedev.key_pools (title, platform, store_url, cover_image_url, description, donated_by_name, created_by, discord_announced)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
 				RETURNING id
-			`, req.Title, req.Platform, req.StoreURL, req.CoverImageURL, req.Description, u.DisplayName, u.ID, announceNow).Scan(&poolID)
+			`, req.Title, req.Platform, req.StoreURL, req.CoverImageURL, req.Description, u.DisplayName, u.ID).Scan(&poolID)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 				return
@@ -1140,13 +1139,11 @@ func (s *Server) handleKeyPools(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if announceNow {
-			go func(pid int) {
-				if err := s.announceEntryByID("keys", pid); err != nil {
-					log.Printf("Discord key announcement error: %v", err)
-				}
-			}(poolID)
-		}
+		go func(pid int) {
+			if err := s.announceEntryByID("keys", pid); err != nil {
+				log.Printf("Discord key announcement error: %v", err)
+			}
+		}(poolID)
 
 		writeJSON(w, http.StatusCreated, map[string]any{
 			"status":     "donated",
@@ -1451,25 +1448,22 @@ func (s *Server) handleEbooks(w http.ResponseWriter, r *http.Request) {
 			fileSizeLabel = "5.0 MB"
 		}
 
-		announceNow := !s.hasUnannouncedEntries()
 		var id int
 		err := s.db.QueryRow(`
 			INSERT INTO trigamedev.ebooks (title, author, category, description, cover_image_url, file_name, file_format, file_size_label, uploaded_by_name, uploaded_by, discord_announced)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, TRUE)
 			RETURNING id
-		`, title, author, category, description, coverImageURL, fileName, fileFormat, fileSizeLabel, u.DisplayName, u.ID, announceNow).Scan(&id)
+		`, title, author, category, description, coverImageURL, fileName, fileFormat, fileSizeLabel, u.DisplayName, u.ID).Scan(&id)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
 
-		if announceNow {
-			go func(bookID int) {
-				if err := s.announceEntryByID("ebooks", bookID); err != nil {
-					log.Printf("Discord ebook announcement error: %v", err)
-				}
-			}(id)
-		}
+		go func(bookID int) {
+			if err := s.announceEntryByID("ebooks", bookID); err != nil {
+				log.Printf("Discord ebook announcement error: %v", err)
+			}
+		}(id)
 		writeJSON(w, http.StatusCreated, map[string]any{"status": "created", "id": id})
 	}
 }
@@ -1612,7 +1606,6 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 			req.ImageURL = "/brand/filler.png"
 		}
 
-		announceNow := !s.hasUnannouncedEntries()
 		var err error
 		var newID int
 		switch req.Section {
@@ -1622,9 +1615,9 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 			}
 			err = s.db.QueryRow(`
 				INSERT INTO trigamedev.news (title, summary, body_markdown, author_name, author_role, tag, created_by, discord_announced)
-				VALUES ($1, $2, $3, $4, 'OG', $5, $6, $7)
+				VALUES ($1, $2, $3, $4, 'OG', $5, $6, TRUE)
 				RETURNING id
-			`, req.Title, req.Subtitle, req.Description, u.DisplayName, req.Tag, u.ID, announceNow).Scan(&newID)
+			`, req.Title, req.Subtitle, req.Description, u.DisplayName, req.Tag, u.ID).Scan(&newID)
 		case "events":
 			st := time.Now().Add(72 * time.Hour)
 			if req.StartDate != "" {
@@ -1644,9 +1637,9 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 			}
 			err = s.db.QueryRow(`
 				INSERT INTO trigamedev.events (title, description, location, start_time, cover_image_url, tag, created_by, discord_announced)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
 				RETURNING id
-			`, req.Title, req.Description, loc, st, req.ImageURL, tag, u.ID, announceNow).Scan(&newID)
+			`, req.Title, req.Description, loc, st, req.ImageURL, tag, u.ID).Scan(&newID)
 		case "jams":
 			st := time.Now()
 			et := time.Now().Add(48 * time.Hour)
@@ -1667,9 +1660,9 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 			winnersBytes, _ := json.Marshal(req.Winners)
 			err = s.db.QueryRow(`
 				INSERT INTO trigamedev.game_jams (title, month_label, theme, description, itch_url, cover_image_url, start_date, end_date, status, participants_count, submissions_count, jam_type, winners_json, created_by, discord_announced)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, TRUE)
 				RETURNING id
-			`, req.Title, req.Tag, req.Subtitle, req.Description, req.URL, req.ImageURL, st, et, status, req.ParticipantsCount, req.SubmissionsCount, jamType, string(winnersBytes), u.ID, announceNow).Scan(&newID)
+			`, req.Title, req.Tag, req.Subtitle, req.Description, req.URL, req.ImageURL, st, et, status, req.ParticipantsCount, req.SubmissionsCount, jamType, string(winnersBytes), u.ID).Scan(&newID)
 		case "showcase":
 			srcURL := req.SecondaryURL
 			if srcURL == "" {
@@ -1687,9 +1680,9 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 			}
 			err = s.db.QueryRow(`
 				INSERT INTO trigamedev.showcase (title, developer_name, description, thumbnail_url, play_url, source_url, engine, featured, created_by, action_label, discord_announced)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, $9, $10)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, $9, TRUE)
 				RETURNING id
-			`, req.Title, req.Subtitle, req.Description, req.ImageURL, req.URL, srcURL, req.Tag, u.ID, actLabel, announceNow).Scan(&newID)
+			`, req.Title, req.Subtitle, req.Description, req.ImageURL, req.URL, srcURL, req.Tag, u.ID, actLabel).Scan(&newID)
 		case "gallery":
 			evLabel := req.Tag
 			if evLabel == "" {
@@ -1697,9 +1690,9 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 			}
 			err = s.db.QueryRow(`
 				INSERT INTO trigamedev.gallery (title, caption, image_url, event_label, uploaded_by, created_by, discord_announced)
-				VALUES ($1, $2, $3, $4, $5, $6, $7)
+				VALUES ($1, $2, $3, $4, $5, $6, TRUE)
 				RETURNING id
-			`, req.Title, req.Description, req.ImageURL, evLabel, u.DisplayName, u.ID, announceNow).Scan(&newID)
+			`, req.Title, req.Description, req.ImageURL, evLabel, u.DisplayName, u.ID).Scan(&newID)
 		case "videos":
 			speaker := req.Subtitle
 			if speaker == "" {
@@ -1707,9 +1700,9 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 			}
 			err = s.db.QueryRow(`
 				INSERT INTO trigamedev.videos (title, description, video_url, thumbnail_url, speaker_name, duration, created_by, discord_announced)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
 				RETURNING id
-			`, req.Title, req.Description, req.URL, req.ImageURL, speaker, req.Tag, u.ID, announceNow).Scan(&newID)
+			`, req.Title, req.Description, req.URL, req.ImageURL, speaker, req.Tag, u.ID).Scan(&newID)
 		default:
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Unknown post type"})
 			return
@@ -1719,13 +1712,11 @@ func (s *Server) handleCMSItem(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
-		if announceNow {
-			go func(sec string, itemID int) {
-				if err := s.announceEntryByID(sec, itemID); err != nil {
-					log.Printf("Discord CMS announcement error (%s #%d): %v", sec, itemID, err)
-				}
-			}(req.Section, newID)
-		}
+		go func(sec string, itemID int) {
+			if err := s.announceEntryByID(sec, itemID); err != nil {
+				log.Printf("Discord CMS announcement error (%s #%d): %v", sec, itemID, err)
+			}
+		}(req.Section, newID)
 		writeJSON(w, http.StatusCreated, map[string]string{"status": "published"})
 		return
 	}
@@ -1759,11 +1750,18 @@ func (s *Server) handleDiscordSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	syncedEvents := s.syncDiscordEventsFromGuild(true)
+	notifSetup, notifErr := s.ensureDiscordNotificationsSetup()
+	notifStatus := "ready"
+	if notifErr != nil {
+		notifStatus = notifErr.Error()
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":        "synced",
-		"synced_events": syncedEvents,
-		"timestamp":     time.Now().Format(time.RFC3339),
+		"status":              "synced",
+		"synced_events":       syncedEvents,
+		"notifications_setup": notifStatus,
+		"notifications_info":  notifSetup,
+		"timestamp":           time.Now().Format(time.RFC3339),
 	})
 }
 

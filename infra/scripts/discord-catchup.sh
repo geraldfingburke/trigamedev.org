@@ -19,8 +19,6 @@ if [ "$MODE" = "--status" ]; then
       UNION ALL
       SELECT 'events' FROM trigamedev.events WHERE COALESCE(discord_announced, FALSE) = FALSE AND start_time >= NOW()
       UNION ALL
-      SELECT 'news' FROM trigamedev.news WHERE COALESCE(discord_announced, FALSE) = FALSE
-      UNION ALL
       SELECT 'showcase' FROM trigamedev.showcase WHERE COALESCE(discord_announced, FALSE) = FALSE
       UNION ALL
       SELECT 'gallery' FROM trigamedev.gallery WHERE COALESCE(discord_announced, FALSE) = FALSE
