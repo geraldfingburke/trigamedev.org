@@ -17,6 +17,10 @@ pool: ConnectionPool | None = None
 TAROT_JSON_PATH = Path(__file__).parent / "tarot_card_data.json"
 IMAGE_BASE_URL = "https://geraldburke.com/apis/plateautarot/images"
 
+PG_INT32_MIN = -2_147_483_648
+PG_INT32_MAX = 2_147_483_647
+VARCHAR_MAX_LENGTH = 255
+
 
 def initialize_database_schemas() -> None:
     if not pool:
@@ -73,9 +77,13 @@ def initialize_database_schemas() -> None:
                     game_id SERIAL PRIMARY KEY,
                     email VARCHAR(255) NOT NULL,
                     game_name VARCHAR(255) NOT NULL,
-                    created_at TIMESTAMPTZ DEFAULT NOW()
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    CONSTRAINT uq_leaderboard_users_email_game_name UNIQUE (email, game_name)
                 );
                 """
+            )
+            cur.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_leaderboard_users_email_game_name ON simple_leaderboard.users (email, game_name);"
             )
             cur.execute(
                 """
@@ -97,7 +105,8 @@ def initialize_database_schemas() -> None:
                 cur.execute(
                     """
                     INSERT INTO simple_leaderboard.users (email, game_name)
-                    VALUES ('gerald@geraldburke.com', 'Default Leaderboard');
+                    VALUES ('gerald@geraldburke.com', 'Default Leaderboard')
+                    ON CONFLICT (email, game_name) DO NOTHING;
                     """
                 )
         conn.commit()
@@ -299,33 +308,23 @@ def game_id_exists(game_id: int) -> bool:
             return cur.fetchone() is not None
 
 
-def record_new_user(email: str, game_name: str) -> int:
+def record_new_user(email: str, game_name: str) -> str:
     assert pool is not None
     with pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT game_id
-                FROM simple_leaderboard.users
-                WHERE email = %s AND game_name = %s;
-                """,
-                (email, game_name),
-            )
-            existing = cur.fetchone()
-            if existing:
-                return int(existing[0])
-
-            cur.execute(
-                """
                 INSERT INTO simple_leaderboard.users (email, game_name)
                 VALUES (%s, %s)
+                ON CONFLICT (email, game_name)
+                DO UPDATE SET email = EXCLUDED.email
                 RETURNING game_id;
                 """,
                 (email, game_name),
             )
-            created = cur.fetchone()
+            row = cur.fetchone()
         conn.commit()
-    return int(created[0]) if created else 1
+    return str(row[0]) if row else "1"
 
 
 def record_new_score(game_id: int, score: int, user_name: str) -> Response:
@@ -382,21 +381,36 @@ def get_user_scores(game_id: int, user_name: str, count: int = 10) -> list[dict[
     return [{row[0]: row[1]} for row in rows]
 
 
+def parse_int32(raw_value: str) -> int:
+    parsed = int(raw_value)
+    if parsed < PG_INT32_MIN or parsed > PG_INT32_MAX:
+        raise ValueError("Integer out of 32-bit signed range")
+    return parsed
+
+
 def parse_positive_count(count_param: str | None, default: int = 10) -> int:
     if not count_param:
         return default
-    parsed = int(count_param)
+    parsed = parse_int32(count_param)
     if parsed < 1:
         raise ValueError("Count must be positive")
     return parsed
 
 
-def extract_non_empty_string(payload: dict[str, Any], key: str) -> str | None:
+def is_within_varchar_limit(value: str | None, max_length: int = VARCHAR_MAX_LENGTH) -> bool:
+    return bool(value) and len(value) <= max_length
+
+
+def extract_bounded_string(
+    payload: dict[str, Any], key: str, max_length: int = VARCHAR_MAX_LENGTH
+) -> str | None:
     value = payload.get(key)
     if not isinstance(value, str):
         return None
     trimmed = value.strip()
-    return trimmed if trimmed else None
+    if not trimmed or len(trimmed) > max_length:
+        return None
+    return trimmed
 
 
 @app.api_route("/apis/simple-leaderboard-api", methods=["GET", "POST"])
@@ -415,11 +429,12 @@ async def handle_leaderboard_request(request: Request) -> Response:
     count_param = query_params.get("count")
 
     if action == "newScore":
-        if not (game_id_param and score_param and user_name):
+        if not (game_id_param and score_param and is_within_varchar_limit(user_name)):
             return PlainTextResponse("Invalid Params")
+        assert user_name is not None
         try:
-            game_id = int(game_id_param)
-            score_value = int(score_param)
+            game_id = parse_int32(game_id_param)
+            score_value = parse_int32(score_param)
         except ValueError:
             return PlainTextResponse("Invalid Params")
         return await run_in_threadpool(record_new_score, game_id, score_value, user_name)
@@ -428,7 +443,7 @@ async def handle_leaderboard_request(request: Request) -> Response:
         if not game_id_param:
             return PlainTextResponse("Invalid params")
         try:
-            game_id = int(game_id_param)
+            game_id = parse_int32(game_id_param)
             limit = parse_positive_count(count_param)
         except ValueError:
             return PlainTextResponse("Invalid params")
@@ -436,10 +451,11 @@ async def handle_leaderboard_request(request: Request) -> Response:
         return JSONResponse(scores)
 
     if action == "userScores":
-        if not (user_name and game_id_param):
+        if not (is_within_varchar_limit(user_name) and game_id_param):
             return PlainTextResponse("Invalid params")
+        assert user_name is not None
         try:
-            game_id = int(game_id_param)
+            game_id = parse_int32(game_id_param)
             limit = parse_positive_count(count_param)
         except ValueError:
             return PlainTextResponse("Invalid params")
@@ -452,8 +468,8 @@ async def handle_leaderboard_request(request: Request) -> Response:
         payload = {}
 
     if isinstance(payload, dict) and payload.get("action") == "addUser":
-        email = extract_non_empty_string(payload, "email")
-        game_name = extract_non_empty_string(payload, "gameName")
+        email = extract_bounded_string(payload, "email")
+        game_name = extract_bounded_string(payload, "gameName")
         if not (email and game_name):
             return PlainTextResponse("Invalid params")
         registered_game_id = await run_in_threadpool(record_new_user, email, game_name)
