@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from psycopg_pool import ConnectionPool
@@ -107,12 +108,12 @@ async def lifespan(app: FastAPI):
     global pool
     pool = ConnectionPool(conninfo=DATABASE_URL, min_size=1, max_size=10, open=True)
     try:
-        initialize_database_schemas()
+        await run_in_threadpool(initialize_database_schemas)
     except Exception as exc:
         print(f"Schema init notice: {exc}")
     yield
     if pool:
-        pool.close()
+        await run_in_threadpool(pool.close)
 
 
 app = FastAPI(title="Shared FastAPI Backend", lifespan=lifespan)
@@ -381,6 +382,23 @@ def get_user_scores(game_id: int, user_name: str, count: int = 10) -> list[dict[
     return [{row[0]: row[1]} for row in rows]
 
 
+def parse_positive_count(count_param: str | None, default: int = 10) -> int:
+    if not count_param:
+        return default
+    parsed = int(count_param)
+    if parsed < 1:
+        raise ValueError("Count must be positive")
+    return parsed
+
+
+def extract_non_empty_string(payload: dict[str, Any], key: str) -> str | None:
+    value = payload.get(key)
+    if not isinstance(value, str):
+        return None
+    trimmed = value.strip()
+    return trimmed if trimmed else None
+
+
 @app.api_route("/apis/simple-leaderboard-api", methods=["GET", "POST"])
 @app.api_route("/apis/simple-leaderboard-api/", methods=["GET", "POST"])
 @app.api_route("/apis/simple-leaderboard", methods=["GET", "POST"])
@@ -400,27 +418,33 @@ async def handle_leaderboard_request(request: Request) -> Response:
         if not (game_id_param and score_param and user_name):
             return PlainTextResponse("Invalid Params")
         try:
-            return record_new_score(int(game_id_param), int(score_param), user_name)
+            game_id = int(game_id_param)
+            score_value = int(score_param)
         except ValueError:
             return PlainTextResponse("Invalid Params")
+        return await run_in_threadpool(record_new_score, game_id, score_value, user_name)
 
     if action == "topScores":
         if not game_id_param:
             return PlainTextResponse("Invalid params")
         try:
-            limit = int(count_param) if count_param else 10
-            return JSONResponse(get_top_scores(int(game_id_param), limit))
+            game_id = int(game_id_param)
+            limit = parse_positive_count(count_param)
         except ValueError:
             return PlainTextResponse("Invalid params")
+        scores = await run_in_threadpool(get_top_scores, game_id, limit)
+        return JSONResponse(scores)
 
     if action == "userScores":
         if not (user_name and game_id_param):
             return PlainTextResponse("Invalid params")
         try:
-            limit = int(count_param) if count_param else 10
-            return JSONResponse(get_user_scores(int(game_id_param), user_name, limit))
+            game_id = int(game_id_param)
+            limit = parse_positive_count(count_param)
         except ValueError:
             return PlainTextResponse("Invalid params")
+        scores = await run_in_threadpool(get_user_scores, game_id, user_name, limit)
+        return JSONResponse(scores)
 
     try:
         payload = await request.json()
@@ -428,10 +452,11 @@ async def handle_leaderboard_request(request: Request) -> Response:
         payload = {}
 
     if isinstance(payload, dict) and payload.get("action") == "addUser":
-        email = (payload.get("email") or "").strip()
-        game_name = (payload.get("gameName") or "").strip()
+        email = extract_non_empty_string(payload, "email")
+        game_name = extract_non_empty_string(payload, "gameName")
         if not (email and game_name):
             return PlainTextResponse("Invalid params")
-        return JSONResponse(record_new_user(email, game_name))
+        registered_game_id = await run_in_threadpool(record_new_user, email, game_name)
+        return JSONResponse(registered_game_id)
 
     return PlainTextResponse("Invalid params")
