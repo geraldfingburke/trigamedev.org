@@ -17,12 +17,11 @@ TAROT_JSON_PATH = Path(__file__).parent / "tarot_card_data.json"
 IMAGE_BASE_URL = "https://geraldburke.com/apis/plateautarot/images"
 
 
-def init_schemas() -> None:
+def initialize_database_schemas() -> None:
     if not pool:
         return
     with pool.connection() as conn:
         with conn.cursor() as cur:
-            # 1. Plateau Tarot PostgreSQL Schema & Table
             cur.execute("CREATE SCHEMA IF NOT EXISTS plateau_tarot;")
             cur.execute(
                 """
@@ -66,7 +65,6 @@ def init_schemas() -> None:
                         ),
                     )
 
-            # 2. Simple Leaderboard PostgreSQL Schema & Tables
             cur.execute("CREATE SCHEMA IF NOT EXISTS simple_leaderboard;")
             cur.execute(
                 """
@@ -92,10 +90,9 @@ def init_schemas() -> None:
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_leaderboard_scores_game_score ON simple_leaderboard.scores (game_id, score DESC);"
             )
-            # Ensure at least game_id = 1 exists for legacy/demo calls
             cur.execute("SELECT COUNT(*) FROM simple_leaderboard.users;")
-            u_row = cur.fetchone()
-            if (u_row[0] if u_row else 0) == 0:
+            user_row = cur.fetchone()
+            if (user_row[0] if user_row else 0) == 0:
                 cur.execute(
                     """
                     INSERT INTO simple_leaderboard.users (email, game_name)
@@ -110,7 +107,7 @@ async def lifespan(app: FastAPI):
     global pool
     pool = ConnectionPool(conninfo=DATABASE_URL, min_size=1, max_size=10, open=True)
     try:
-        init_schemas()
+        initialize_database_schemas()
     except Exception as exc:
         print(f"Schema init notice: {exc}")
     yield
@@ -118,7 +115,7 @@ async def lifespan(app: FastAPI):
         pool.close()
 
 
-app = FastAPI(title="Shared FastAPI Backend (Plateau Tarot & Simple Leaderboard)", lifespan=lifespan)
+app = FastAPI(title="Shared FastAPI Backend", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -164,11 +161,7 @@ def root():
     }
 
 
-# ==============================================================================
-# 1. PLATEAU TAROT API (FastAPI + PostgreSQL)
-# Preserves 100% compatibility with https://github.com/geraldfingburke/plateau-tarot-api
-# ==============================================================================
-def _load_tarot_deck() -> list[dict[str, Any]]:
+def load_tarot_deck() -> list[dict[str, Any]]:
     if pool:
         with pool.connection() as conn:
             with conn.cursor() as cur:
@@ -183,241 +176,262 @@ def _load_tarot_deck() -> list[dict[str, Any]]:
                 if rows:
                     return [
                         {
-                            "name": r[1],
-                            "arcana": r[2],
-                            "suit": r[3],
-                            "description": r[4],
-                            "rank": r[5],
-                            "symbols": r[6],
-                            "imageURL": r[7],
-                            "cardBack": r[8],
-                            "id": r[0],
+                            "name": row[1],
+                            "arcana": row[2],
+                            "suit": row[3],
+                            "description": row[4],
+                            "rank": row[5],
+                            "symbols": row[6],
+                            "imageURL": row[7],
+                            "cardBack": row[8],
+                            "id": row[0],
                         }
-                        for r in rows
+                        for row in rows
                     ]
-    # Fallback to JSON file if DB is unavailable
     raw = json.loads(TAROT_JSON_PATH.read_text(encoding="utf-8"))
-    deck = []
-    for idx, c in enumerate(raw.get("cards", []), start=1):
-        deck.append(
-            {
-                "name": c["name"],
-                "arcana": c["arcana"],
-                "suit": c["suit"],
-                "description": c["description"],
-                "rank": str(c["rank"]),
-                "symbols": c["symbols"],
-                "imageURL": f"{IMAGE_BASE_URL}/{c['name']}.jpg",
-                "cardBack": f"{IMAGE_BASE_URL}/Card Back.jpg",
-                "id": idx,
-            }
-        )
-    return deck
+    return [
+        {
+            "name": card["name"],
+            "arcana": card["arcana"],
+            "suit": card["suit"],
+            "description": card["description"],
+            "rank": str(card["rank"]),
+            "symbols": card["symbols"],
+            "imageURL": f"{IMAGE_BASE_URL}/{card['name']}.jpg",
+            "cardBack": f"{IMAGE_BASE_URL}/Card Back.jpg",
+            "id": idx,
+        }
+        for idx, card in enumerate(raw.get("cards", []), start=1)
+    ]
+
+
+def resolve_seed(seed_param: str | None) -> int | str:
+    if seed_param is not None and seed_param != "":
+        try:
+            return int(seed_param)
+        except ValueError:
+            return seed_param
+    return random.randint(1, 2147483647)
+
+
+def fisher_yates_shuffle(cards: list[dict[str, Any]], seed_val: int | str) -> list[dict[str, Any]]:
+    shuffled = list(cards)
+    rng = random.Random(seed_val)
+    for index in range(len(shuffled)):
+        swap_index = rng.randint(0, index)
+        shuffled[index], shuffled[swap_index] = shuffled[swap_index], shuffled[index]
+    return shuffled
+
+
+def find_card_by_id(cards: list[dict[str, Any]], id_param: str) -> dict[str, Any] | None:
+    try:
+        target_id = int(id_param)
+    except ValueError:
+        return None
+    for card in cards:
+        if card["id"] == target_id:
+            return card
+    return None
+
+
+def filter_cards_by_arcana(cards: list[dict[str, Any]], arcana_param: str) -> list[dict[str, Any]]:
+    target = arcana_param.strip().lower()
+    return [card for card in cards if card["arcana"].lower() == target]
+
+
+def filter_cards_by_suit(cards: list[dict[str, Any]], suit_param: str) -> list[dict[str, Any]]:
+    target = suit_param.strip().lower()
+    return [card for card in cards if card["suit"].lower() == target]
 
 
 @app.get("/apis/plateautarot")
 @app.get("/apis/plateautarot/")
 @app.get("/plateautarot/api")
 @app.get("/plateautarot/api/")
-def plateau_tarot_handler(
+def get_tarot_cards(
     seed: str | None = None,
     id: str | None = None,
     arcana: str | None = None,
     suit: str | None = None,
     count: str | None = None,
 ) -> Response:
-    cards = _load_tarot_deck()
+    seed_val = resolve_seed(seed)
+    cards = fisher_yates_shuffle(load_tarot_deck(), seed_val)
 
-    if seed is not None and seed != "":
-        try:
-            seed_val: int | str = int(seed)
-        except ValueError:
-            seed_val = seed
-    else:
-        seed_val = random.randint(1, 2147483647)
-
-    # Apply Fisher-Yates shuffle to deck using the seed
-    rng = random.Random(seed_val)
-    for i in range(len(cards)):
-        r = rng.randint(0, i)
-        cards[i], cards[r] = cards[r], cards[i]
-
-    # 1. Filter by id
     if id is not None:
-        try:
-            target_id = int(id)
-        except ValueError:
+        matched_card = find_card_by_id(cards, id)
+        if matched_card is None:
             return PlainTextResponse("Card not found")
-        for card in cards:
-            if card["id"] == target_id:
-                return JSONResponse(card)
-        return PlainTextResponse("Card not found")
+        return JSONResponse(matched_card)
 
-    # 2. Filter by arcana
     if arcana is not None:
-        target_arcana = arcana.strip().lower()
-        selection = [c for c in cards if c["arcana"].lower() == target_arcana]
-        if len(selection) < 1:
+        cards = filter_cards_by_arcana(cards, arcana)
+        if not cards:
             return PlainTextResponse("Invalid Arcana")
-        cards = selection
 
-    # 3. Filter by suit
     if suit is not None:
-        target_suit = suit.strip().lower()
-        selection = [c for c in cards if c["suit"].lower() == target_suit]
-        if len(selection) < 1:
+        cards = filter_cards_by_suit(cards, suit)
+        if not cards:
             return PlainTextResponse("Invalid Suit")
-        cards = selection
 
-    # 4. Limit by count
     if count is not None:
         try:
-            n = int(count)
+            requested_count = int(count)
         except ValueError:
             return PlainTextResponse("Not a number!")
-        if n > 78 or n < 1 or n > len(cards):
-            if n > 78 or n < 1:
-                return PlainTextResponse("Invalid Number")
-            n = len(cards)
-        cards = cards[:n]
+        if requested_count > 78 or requested_count < 1:
+            return PlainTextResponse("Invalid Number")
+        cards = cards[: min(requested_count, len(cards))]
 
     return JSONResponse({"cards": cards, "seed": seed_val})
 
 
-# ==============================================================================
-# 2. SIMPLE LEADERBOARD API (FastAPI + PostgreSQL)
-# Preserves 100% compatibility with https://github.com/geraldfingburke/simple-leaderboard-api
-# ==============================================================================
+def game_id_exists(game_id: int) -> bool:
+    if not pool:
+        return False
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT game_id FROM simple_leaderboard.users WHERE game_id = %s;",
+                (game_id,),
+            )
+            return cur.fetchone() is not None
+
+
+def record_new_user(email: str, game_name: str) -> int:
+    assert pool is not None
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT game_id
+                FROM simple_leaderboard.users
+                WHERE email = %s AND game_name = %s;
+                """,
+                (email, game_name),
+            )
+            existing = cur.fetchone()
+            if existing:
+                return int(existing[0])
+
+            cur.execute(
+                """
+                INSERT INTO simple_leaderboard.users (email, game_name)
+                VALUES (%s, %s)
+                RETURNING game_id;
+                """,
+                (email, game_name),
+            )
+            created = cur.fetchone()
+        conn.commit()
+    return int(created[0]) if created else 1
+
+
+def record_new_score(game_id: int, score: int, user_name: str) -> Response:
+    assert pool is not None
+    if not game_id_exists(game_id):
+        return PlainTextResponse("Invalid GameID")
+
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO simple_leaderboard.scores (game_id, score, user_name)
+                VALUES (%s, %s, %s);
+                """,
+                (game_id, score, user_name),
+            )
+        conn.commit()
+    return PlainTextResponse("Success")
+
+
+def get_top_scores(game_id: int, count: int = 10) -> list[dict[str, int | str]]:
+    assert pool is not None
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT user_name, score
+                FROM simple_leaderboard.scores
+                WHERE game_id = %s
+                ORDER BY score DESC
+                LIMIT %s;
+                """,
+                (game_id, count),
+            )
+            rows = cur.fetchall()
+    return [{"userName": row[0], "score": row[1]} for row in rows]
+
+
+def get_user_scores(game_id: int, user_name: str, count: int = 10) -> list[dict[str, int]]:
+    assert pool is not None
+    with pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT user_name, score
+                FROM simple_leaderboard.scores
+                WHERE game_id = %s AND user_name = %s
+                ORDER BY score DESC
+                LIMIT %s;
+                """,
+                (game_id, user_name, count),
+            )
+            rows = cur.fetchall()
+    return [{row[0]: row[1]} for row in rows]
+
+
 @app.api_route("/apis/simple-leaderboard-api", methods=["GET", "POST"])
 @app.api_route("/apis/simple-leaderboard-api/", methods=["GET", "POST"])
 @app.api_route("/apis/simple-leaderboard", methods=["GET", "POST"])
 @app.api_route("/apis/simple-leaderboard/", methods=["GET", "POST"])
-async def simple_leaderboard_handler(request: Request) -> Response:
+async def handle_leaderboard_request(request: Request) -> Response:
     if not pool:
         return PlainTextResponse("Database connection unavailable", status_code=500)
 
-    qp = request.query_params
-    action = qp.get("action")
-    game_id_raw = qp.get("gameID")
-    score_raw = qp.get("score")
-    user_name = qp.get("userName")
-    count_raw = qp.get("count")
+    query_params = request.query_params
+    action = query_params.get("action")
+    game_id_param = query_params.get("gameID")
+    score_param = query_params.get("score")
+    user_name = query_params.get("userName")
+    count_param = query_params.get("count")
 
-    # 1. action == "newScore"
     if action == "newScore":
-        if game_id_raw and score_raw and user_name:
-            try:
-                game_id = int(game_id_raw)
-                score_val = int(score_raw)
-            except ValueError:
-                return PlainTextResponse("Invalid Params")
+        if not (game_id_param and score_param and user_name):
+            return PlainTextResponse("Invalid Params")
+        try:
+            return record_new_score(int(game_id_param), int(score_param), user_name)
+        except ValueError:
+            return PlainTextResponse("Invalid Params")
 
-            with pool.connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT game_id FROM simple_leaderboard.users WHERE game_id = %s;",
-                        (game_id,),
-                    )
-                    if not cur.fetchone():
-                        return PlainTextResponse("Invalid GameID")
-
-                    cur.execute(
-                        """
-                        INSERT INTO simple_leaderboard.scores (game_id, score, user_name)
-                        VALUES (%s, %s, %s);
-                        """,
-                        (game_id, score_val, user_name),
-                    )
-                conn.commit()
-            return PlainTextResponse("Success")
-        return PlainTextResponse("Invalid Params")
-
-    # 2. action == "topScores"
     if action == "topScores":
-        if not game_id_raw:
+        if not game_id_param:
             return PlainTextResponse("Invalid params")
         try:
-            game_id = int(game_id_raw)
-            limit = int(count_raw) if count_raw else 10
+            limit = int(count_param) if count_param else 10
+            return JSONResponse(get_top_scores(int(game_id_param), limit))
         except ValueError:
             return PlainTextResponse("Invalid params")
 
-        with pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT user_name, score
-                    FROM simple_leaderboard.scores
-                    WHERE game_id = %s
-                    ORDER BY score DESC
-                    LIMIT %s;
-                    """,
-                    (game_id, limit),
-                )
-                rows = cur.fetchall()
-        return JSONResponse([{"userName": r[0], "score": r[1]} for r in rows])
-
-    # 3. action == "userScores"
     if action == "userScores":
-        if not user_name or not game_id_raw:
+        if not (user_name and game_id_param):
             return PlainTextResponse("Invalid params")
         try:
-            game_id = int(game_id_raw)
-            limit = int(count_raw) if count_raw else 10
+            limit = int(count_param) if count_param else 10
+            return JSONResponse(get_user_scores(int(game_id_param), user_name, limit))
         except ValueError:
             return PlainTextResponse("Invalid params")
 
-        with pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT user_name, score
-                    FROM simple_leaderboard.scores
-                    WHERE game_id = %s AND user_name = %s
-                    ORDER BY score DESC
-                    LIMIT %s;
-                    """,
-                    (game_id, user_name, limit),
-                )
-                rows = cur.fetchall()
-        return JSONResponse([{r[0]: r[1]} for r in rows])
-
-    # 4. POST JSON body {"action": "addUser", "email": "...", "gameName": "..."}
     try:
-        data = await request.json()
+        payload = await request.json()
     except Exception:
-        data = {}
+        payload = {}
 
-    if isinstance(data, dict) and data.get("action") == "addUser":
-        email = (data.get("email") or "").strip()
-        game_name = (data.get("gameName") or "").strip()
-        if not email or not game_name:
+    if isinstance(payload, dict) and payload.get("action") == "addUser":
+        email = (payload.get("email") or "").strip()
+        game_name = (payload.get("gameName") or "").strip()
+        if not (email and game_name):
             return PlainTextResponse("Invalid params")
-
-        with pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT game_id
-                    FROM simple_leaderboard.users
-                    WHERE email = %s AND game_name = %s;
-                    """,
-                    (email, game_name),
-                )
-                existing = cur.fetchone()
-                if existing:
-                    return JSONResponse(existing[0])
-
-                cur.execute(
-                    """
-                    INSERT INTO simple_leaderboard.users (email, game_name)
-                    VALUES (%s, %s)
-                    RETURNING game_id;
-                    """,
-                    (email, game_name),
-                )
-                new_row = cur.fetchone()
-            conn.commit()
-        return JSONResponse(new_row[0] if new_row else 1)
+        return JSONResponse(record_new_user(email, game_name))
 
     return PlainTextResponse("Invalid params")
